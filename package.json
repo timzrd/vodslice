@@ -1,0 +1,49 @@
+{
+  "name": "vodslice",
+  "productName": "Vodslice",
+  "version": "1.0.0",
+  "description": "Fast YouTube & Twitch VOD clipper with facecam extraction",
+  "main": "electron/main.cjs",
+  "author": "Tim",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "vite build",
+    "start": "vite build && electron .",
+    "electron": "electron .",
+    "dist": "vite build && electron-builder --win nsis"
+  },
+  "build": {
+    "appId": "app.vodslice",
+    "productName": "Vodslice",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "electron/**",
+      "dist/**",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis",
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Vodslice"
+    }
+  },
+  "devDependencies": {
+    "@mediapipe/tasks-vision": "^1.2.2",
+    "@vitejs/plugin-react": "^6.2.1",
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0",
+    "hls.js": "^1.7.4",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "vite": "^8.3.6"
+  }
+}
