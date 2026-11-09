@@ -28,8 +28,7 @@ updates itself from this repository's releases.
   emotes, from Twitch VODs, Twitch clips (via their VOD) and YouTube streams with chat replay. Drop it on top of
   your edit — the Premiere sequence gets it on its own track.
 - **Made for hotkeys** – right hand on J K L (back / play-pause / faster), U I O for marker / IN / OUT. I…O, I…O
-  cuts clip after clip; markers (U) are snap points and jump targets (`,` `.`). Every key flashes a small hint in
-  the player, F1 shows the whole keyboard.
+  cuts clip after clip; markers (U) are snap points and jump targets (`,` `.`). F1 shows the whole keyboard.
 - **Only download what you need** – a parallel HLS downloader fetches just the segments of your time ranges
   (16 connections by default). A 2-minute 1080p60 part of an 8-hour VOD takes seconds.
 - **Clips & segments** – `+ New clip` = separate output (own folder), `+ Segment` = another range that gets

@@ -256,14 +256,6 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
     else setRate(1); // any pause ends the L shuttle
   }, []);
 
-  // ---------- on-screen feedback for hotkeys ----------
-  const [osd, setOsd] = useState(null);
-  const osdTimer = useRef(0);
-  const flash = useCallback((icon, text, tone) => {
-    clearTimeout(osdTimer.current);
-    setOsd({ icon, text, tone, key: performance.now() });
-    osdTimer.current = setTimeout(() => setOsd(null), 750);
-  }, []);
   const seekScrub = useCallback((t) => {
     if (t == null || !player.current) return;
     followLock.current = 0;
@@ -456,29 +448,19 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
   /** I: trim the selected clip, or set a pending IN point. O: trim, or create the clip IN → playhead. */
   const markIn = () => {
     if (!info) return;
-    if (activeSeg && activeSeg.src === activeSrc) {
-      fromPlayhead(activeId, 'start');
-      return flash('in', `Start ${fmt(player.current ? player.current.time : playhead)}`);
-    }
-    const t = Math.round(player.current ? player.current.time : playhead);
-    setMark(t);
-    flash('in', `IN ${fmt(t)}`);
+    if (activeSeg && activeSeg.src === activeSrc) return fromPlayhead(activeId, 'start');
+    setMark(Math.round(player.current ? player.current.time : playhead));
   };
   /** O finishes the clip and deselects it, so the next I starts a new one (I…O, I…O, …). */
   const markOut = () => {
     if (!info) return;
-    if (activeSeg && activeSeg.src === activeSrc) {
-      fromPlayhead(activeId, 'end');
-      return flash('out', `End ${fmt(player.current ? player.current.time : playhead)}`);
-    }
+    if (activeSeg && activeSeg.src === activeSrc) return fromPlayhead(activeId, 'end');
     const t = Math.round(player.current ? player.current.time : playhead);
-    let s;
-    if (mark != null && t > mark + 0.5) s = addClip(mark, t);
-    else if (mark != null && t < mark - 0.5) s = addClip(t, mark);
-    else s = addClip(Math.max(0, t - 30), Math.max(t, 1));
+    if (mark != null && t > mark + 0.5) addClip(mark, t);
+    else if (mark != null && t < mark - 0.5) addClip(t, mark);
+    else addClip(Math.max(0, t - 30), Math.max(t, 1));
     setMark(null);
     setActiveId(null);
-    if (s) flash('check', `Clip ${clipsRef.current.length} · ${fmt(s.end - s.start)}`, 'ok');
   };
 
   // ---------- markers (U): jump targets + snap points ----------
@@ -487,20 +469,13 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
     if (!activeSrc) return;
     const t = at ?? (player.current ? player.current.time : playhead);
     const near = markers.find((m) => Math.abs(m.t - t) < 0.75);
-    if (near) {
-      patchSrc(activeSrc, { markers: markers.filter((m) => m.id !== near.id) });
-      return flash('flag', 'Marker removed');
-    }
-    const list = [...markers, { id: nid('m'), t: Math.round(t * 10) / 10 }].sort((a, b) => a.t - b.t);
-    patchSrc(activeSrc, { markers: list });
-    flash('flag', `Marker ${list.findIndex((m) => Math.abs(m.t - t) < 0.2) + 1}`, 'marker');
+    if (near) return patchSrc(activeSrc, { markers: markers.filter((m) => m.id !== near.id) });
+    patchSrc(activeSrc, { markers: [...markers, { id: nid('m'), t: Math.round(t * 10) / 10 }].sort((a, b) => a.t - b.t) });
   };
   const jumpMarker = (dir) => {
     const t = player.current ? player.current.time : playhead;
     const m = dir > 0 ? markers.find((x) => x.t > t + 0.3) : [...markers].reverse().find((x) => x.t < t - 0.3);
-    if (!m) return flash(dir > 0 ? 'markerNext' : 'markerPrev', markers.length ? 'No more markers' : 'No markers — press U');
-    seekScrub(m.t);
-    flash(dir > 0 ? 'markerNext' : 'markerPrev', `Marker ${markers.indexOf(m) + 1} · ${fmt(m.t)}`, 'marker');
+    if (m) seekScrub(m.t);
   };
   const deleteMarker = (id) => patchSrc(activeSrc, { markers: markers.filter((m) => m.id !== id) });
 
@@ -980,24 +955,15 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
       }
       if (typing || !info || e.ctrlKey || e.altKey || e.metaKey) return;
       const p = player.current;
-      const seekBy = (d) => {
-        if (!p) return;
-        seekScrub(p.time + d);
-        flash(d < 0 ? 'back10' : 'fwd10', `${d < 0 ? '−' : '+'}${Math.abs(d)} s`);
-      };
-      const setSpeed = (n) => {
-        setRate(n);
-        flash('zap', `${n}×`, n > 1 ? 'speed' : undefined);
-      };
+      const seekBy = (d) => p && seekScrub(p.time + d);
       const bump = (dir) => {
         const i = RATES.indexOf(rate);
-        setSpeed(RATES[Math.max(0, Math.min(RATES.length - 1, (i < 0 ? 0 : i) + dir))]);
+        setRate(RATES[Math.max(0, Math.min(RATES.length - 1, (i < 0 ? 0 : i) + dir))]);
       };
       const playPause = () => {
         if (!p) return;
         followLock.current = 0;
         freeView.current = false;
-        flash(p.paused ? 'play' : 'pause', p.paused ? 'Play' : 'Pause');
         p.toggle();
       };
       if (e.shiftKey && (k === '>' || k === ':')) return bump(1);
@@ -1021,8 +987,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
           if (p && p.paused) {
             setRate(1);
             p.toggle();
-            flash('play', 'Play');
-          } else setSpeed(rate < 2 ? 2 : rate < 4 ? 4 : 8);
+          } else setRate(rate < 2 ? 2 : rate < 4 ? 4 : 8);
           break;
         case 'u':
         case 'U':
@@ -1038,7 +1003,6 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         case 'P':
           if (activeSeg && activeSeg.src === activeSrc && p) {
             p.playRange(activeSeg.start, activeSeg.end);
-            flash('play', `Clip ${activeSeg.label}`);
           } else playPause();
           break;
         case 'ArrowLeft':
@@ -1052,17 +1016,14 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         case 'ArrowUp':
           e.preventDefault();
           setVolume((muted ? 0 : volume) + 0.05);
-          flash('volume', `${Math.round(Math.min(1, (muted ? 0 : volume) + 0.05) * 100)} %`);
           break;
         case 'ArrowDown':
           e.preventDefault();
           setVolume((muted ? 0 : volume) - 0.05);
-          flash('volumeLow', `${Math.round(Math.max(0, (muted ? 0 : volume) - 0.05) * 100)} %`);
           break;
         case 'm':
         case 'M':
           toggleMute();
-          flash(muted ? 'volume' : 'mute', muted ? 'Sound on' : 'Muted');
           break;
         case 'i':
         case 'I':
@@ -1074,11 +1035,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
           break;
         case 'n':
           addClip();
-          flash('plus', 'New clip');
           break;
         case 'N':
           addSegment();
-          flash('plus', 'New part');
           break;
         case 'Escape':
           setActiveId(null);
@@ -1090,13 +1049,11 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
             const c = clipsRef.current.find((x) => x.id === activeSeg.clipId);
             if (c && c.segments.length > 1) deleteSeg(activeId);
             else deleteClip(activeSeg.clipId);
-            flash('trash', 'Deleted', 'danger');
           }
           break;
         case 'f':
         case 'F':
           toggleFacecam();
-          flash('user', facecamOn ? 'Facecam off' : 'Facecam on');
           break;
         case 'd':
         case 'D':
@@ -1106,7 +1063,6 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         case 'S':
           if (activeSeg) {
             splitAt(activeId, p ? p.time : playhead);
-            flash('scissors', 'Split');
           }
           break;
         default:
@@ -1517,12 +1473,6 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
                   markers={markers}
                   onMarkerDelete={deleteMarker}
                 />
-              )}
-              {osd && (
-                <div key={osd.key} className={`osd ${osd.tone ? `osd-${osd.tone}` : ''}`}>
-                  <Icon name={osd.icon} size={22} />
-                  <span>{osd.text}</span>
-                </div>
               )}
               {showPip && (
                 <PremierePreview

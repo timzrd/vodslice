@@ -202,8 +202,8 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 **Hotkeys** (Premiere-ish, right hand on J K L): K = play/pause (toggle), L = play / 2× / 4× / 8×, **any pause resets
 the speed**, J = −10 s, I/O = IN/OUT (with a clip selected they trim it; O creates the clip and deselects so the next I
 starts a new one), U = marker (per source, `srcState.markers`, snap target for all drags), `,` / `.` = previous /
-next marker, P = play the selected clip, N new clip, S split, F1 = keyboard overlay. Every hotkey flashes an OSD in
-the player. When you add/change a key, update `KeyMap.jsx` too.
+next marker, P = play the selected clip, N new clip, S split, F1 = keyboard overlay. No pop-ups on hotkeys (Tim
+asked to remove the on-screen hints). When you add/change a key, update `KeyMap.jsx` too.
 
 **Projects / editor model**
 - A project = sources (bin) + per-source state + clips. Autosaved 0.7 s after changes; signed media URLs are not

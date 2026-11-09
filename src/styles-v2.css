@@ -1867,84 +1867,10 @@
   color: var(--muted);
 }
 
-/* ---------- hotkey feedback ---------- */
-.osd {
-  position: absolute;
-  top: 18%;
-  left: 50%;
-  z-index: 8;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 18px 10px 14px;
-  border-radius: 999px;
-  background: rgba(10, 11, 14, 0.72);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  color: #fff;
-  font: 700 17px var(--font-d);
-  font-variant-numeric: tabular-nums;
-  pointer-events: none;
-  transform: translateX(-50%);
-  animation: osd 0.75s ease-out forwards;
-}
-.osd svg {
-  color: var(--accent);
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--accent) 70%, transparent));
-}
-.osd-ok svg {
-  color: var(--ok);
-}
-.osd-danger svg {
-  color: var(--err);
-}
-.osd-marker svg {
-  color: #fff;
-}
-.osd-speed {
-  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  box-shadow: 0 0 24px color-mix(in srgb, var(--accent) 30%, transparent);
-}
-@keyframes osd {
-  0% {
-    opacity: 0;
-    transform: translateX(-50%) scale(0.85);
-  }
-  15% {
-    opacity: 1;
-    transform: translateX(-50%) scale(1.04);
-  }
-  25% {
-    transform: translateX(-50%) scale(1);
-  }
-  75% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translateX(-50%) translateY(-6px);
-  }
-}
+/* ---------- speed button ---------- */
 .rate-btn.glow {
   box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);
 }
-.speed-badge {
-  position: absolute;
-  left: 12px;
-  top: 12px;
-  z-index: 6;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 4px 10px 4px 8px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: var(--ink);
-  font: 800 12px var(--font);
-  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 50%, transparent);
-  pointer-events: none;
-}
-
 /* ---------- markers ---------- */
 .tl-marker {
   position: absolute;
