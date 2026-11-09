@@ -218,6 +218,21 @@ test('twitch: chat windows count emotes once per message, peaks get their emote'
   assert.equal(peaks[1].emote, null);
 });
 
+test('chat: emote words, name colors, clip slugs, Premiere chat track', () => {
+  const chat = req('chat.cjs');
+  const parts = chat.splitText('so KEKW true KEKW', new Map([['KEKW', 'u']]), []);
+  assert.deepEqual(parts, [{ text: 'so ' }, { emote: 'u', name: 'KEKW' }, { text: ' true ' }, { emote: 'u', name: 'KEKW' }]);
+  assert.equal(chat.colorFor('DrDonut'), chat.colorFor('drdonut'), 'stable per name');
+  assert.match(chat.colorFor('x'), /^#[0-9A-F]{6}$/);
+  assert.equal(chat.clipSlug('https://www.twitch.tv/papaplatte/clip/Foo-Bar_1?filter=clips'), 'Foo-Bar_1');
+  assert.equal(chat.clipSlug('https://clips.twitch.tv/SlugHere'), 'SlugHere');
+  const { buildXml } = req('premiere.cjs');
+  const g = { path: path.join(os.tmpdir(), 'g.mp4'), width: 1920, height: 1080, fps: 30, duration: 5, hasAudio: false };
+  const xml = buildXml({ name: 'T', width: 1440, height: 1920, split: 1 / 3, gameplay: g, chat: { path: path.join(os.tmpdir(), 'Chat.mov'), width: 520, height: 820 } });
+  assert.match(xml, /MZ\.TrackName="Chat"/);
+  assert.match(xml, /<file id="file-chat">/);
+});
+
 test('projects: summary has facecam box + clip marks of the main source', () => {
   const { summary } = req('projects.cjs');
   const s = summary({

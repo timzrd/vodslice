@@ -65,9 +65,11 @@ class PremiereExporter {
     const gp = pick(new RegExp(`^${p}${s.gameplayName || 'Gameplay'}\\.mp4$`, 'i'));
     const fcEnh = pick(new RegExp(`^${p}${s.facecamName || 'Facecam'} .*\\.mp4$`, 'i'));
     const fc = pick(new RegExp(`^${p}${s.facecamName || 'Facecam'}\\.mp4$`, 'i'));
+    const ch = pick(new RegExp(`^${p}Chat\\.mov$`, 'i'));
     return {
       gameplay: gp ? path.join(dir, gp) : null,
       facecam: fcEnh ? path.join(dir, fcEnh) : fc ? path.join(dir, fc) : null,
+      chat: ch ? path.join(dir, ch) : null,
     };
   }
 
@@ -90,6 +92,7 @@ class PremiereExporter {
     const g = await this.probe(files.gameplay);
     if (!g || !g.width) throw new Error('Could not read the gameplay file');
     const fc = files.facecam ? await this.probe(files.facecam) : null;
+    const chatMedia = files.chat ? await this.probe(files.chat) : null;
     const [W, H] = FORMATS['3:4']; // always 1440×1920: the facecam is cropped to the top area in Premiere
     const split = Math.min(0.6, Math.max(0.15, Number(P.split) || 1 / 3));
 
@@ -165,6 +168,7 @@ class PremiereExporter {
       gameplayRect,
       facecam: fc && fc.width ? fc : null,
       overlay: overlay ? { path: overlay, width: W, height: H } : null,
+      chat: chatMedia && chatMedia.width ? chatMedia : null,
       calibration: P.calibration || null,
     });
     const xmlPath = path.join(outDir, `${base}.xml`);
@@ -174,7 +178,7 @@ class PremiereExporter {
       format: `${W}x${H}`,
       split,
       gameplayRect,
-      files: { gameplay: files.gameplay, facecam: files.facecam, overlay, srt, ass, xml: xmlPath, words: words ? wordsFile : null },
+      files: { gameplay: files.gameplay, facecam: files.facecam, chat: files.chat, overlay, srt, ass, xml: xmlPath, words: words ? wordsFile : null },
       captions: P.captions,
       device,
       status: 'ready',

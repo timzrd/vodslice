@@ -336,4 +336,4 @@ async function chatActivity(videoId, duration, { cacheDir, onProgress, signal, g
   return out;
 }
 
-module.exports = { gql, channel, list, search, storyboard, chatActivity, countPage, findPeaks, fmtCount, TABS };
+module.exports = { gql, channel, list, search, storyboard, chatActivity, countPage, findPeaks, fmtCount, TABS, thirdPartyEmotes, twitchEmote, getJson };

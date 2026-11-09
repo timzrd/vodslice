@@ -13,6 +13,7 @@ const { spawn: spawnExe } = require('node:child_process');
 const hls = require('./hls.cjs');
 const probe = require('./probe.cjs');
 const naming = require('./naming.cjs');
+const chat = require('./chat.cjs');
 
 let jobSeq = 0;
 const now = () => Date.now();
@@ -40,6 +41,57 @@ class Engine extends EventEmitter {
     this.running = new Set();
     this.encoders = null;
     this.premiere = null; // PremiereExporter, set by main
+    this.chatRenderer = null; // ChatRenderer, set by main
+  }
+
+  warn(job, msg) {
+    this.set(job, { warning: [job.state.warning, msg].filter(Boolean).join(' · ') }, true);
+  }
+
+  /** Chat overlay per output: messages of every range (mapped onto the output timeline) → transparent Chat.mov. */
+  async chatStep(job, groups, outputs, srcs, tmp) {
+    const C = this.store.get().chat || {};
+    const pre = Math.max(0, Number(C.prefill != null ? C.prefill : 15));
+    for (let gi = 0; gi < groups.length; gi++) {
+      const g = groups[gi];
+      const label = groups.length > 1 ? `Chat ${gi + 1}/${groups.length}` : 'Chat';
+      try {
+        this.set(job, { stage: `${label}: reading messages`, eta: null }, true);
+        const msgs = [];
+        let acc = 0;
+        for (let k = 0; k < g.ranges.length; k++) {
+          const r = g.ranges[k];
+          const dur = (r.meta && r.meta.duration) || r.end - r.start;
+          // a bit of history before the first range so the overlay doesn't start empty
+          const list = await chat.fetchRange(srcs[r.src].src, r.start - (k === 0 ? pre : 0), r.start + dur, { signal: job.abort.signal });
+          for (const m of list) msgs.push({ ...m, t: acc + (m.t - r.start) });
+          acc += dur;
+        }
+        this.checkCancel(job);
+        if (!msgs.some((m) => m.t >= 0)) {
+          this.warn(job, 'Chat: no messages in this part');
+          continue;
+        }
+        const out = naming.uniquePath(path.join(g.dir, `${g.prefix}Chat.mov`));
+        this.set(job, { stage: `${label}: rendering` }, true);
+        await this.chatRenderer.render({
+          messages: msgs.filter((m) => m.t >= -pre - 1),
+          duration: acc,
+          width: Math.round(C.width || 520),
+          height: Math.round(C.height || 820),
+          fontSize: Math.round(C.fontSize || 26),
+          dir: path.join(tmp, `chat${gi}`),
+          out,
+          signal: job.abort.signal,
+          ffmpeg: (args, o) => this.ffmpeg(args, { ...o, job }),
+        });
+        outputs[gi].files.push(out);
+        this.set(job, { outputs: outputs.map((o) => ({ ...o, files: [...o.files] })) }, true);
+      } catch (e) {
+        if (job.canceled) throw e;
+        this.warn(job, `Chat: ${e.message}`);
+      }
+    }
   }
 
   list() {
@@ -577,6 +629,9 @@ class Engine extends EventEmitter {
       outputs.push({ dir: g.dir, name: g.name, files, prefix: g.prefix || '' });
       this.set(job, { outputs: outputs.map((o) => ({ ...o, files: [...o.files] })) }, true);
     }
+
+    // ---- Chat overlay ----
+    if (s.chat && this.chatRenderer) await this.chatStep(job, groups, outputs, srcs, tmp);
 
     // ---- Topaz Video AI facecam enhancement ----
     if (enhance && facecams.length) {

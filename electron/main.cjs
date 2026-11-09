@@ -17,6 +17,7 @@ const { parseInput } = require('./links.cjs');
 const youtube = require('./youtube.cjs');
 const twitch = require('./twitch.cjs');
 const { Projects } = require('./projects.cjs');
+const { ChatRenderer } = require('./chatRender.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ICON = path.join(DIST, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -476,6 +477,7 @@ app.whenReady().then(async () => {
   whisper = new Whisper(tools);
   exporter = new PremiereExporter({ tools, store, whisper });
   engine.premiere = exporter;
+  engine.chatRenderer = new ChatRenderer({ preload: path.join(__dirname, 'preload.cjs'), url: 'app://bundle/index.html' });
   engine.on('job', (j) => broadcast('job', j));
   engine.on('removed', (id) => broadcast('job:removed', id));
   engine.on('done', notifyDone);

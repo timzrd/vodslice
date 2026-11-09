@@ -90,6 +90,8 @@ electron/              main process (CommonJS, no build step)
   twitch.cjs           public web GQL: channel, VODs/highlights/clips, search, seek-preview storyboards,
                        chat activity (sampled comments → counts + peaks with 7TV/BTTV/FFZ/Twitch emotes)
   projects.cjs         %APPDATA%\Vodslice\projects\<id>.json + home-screen summaries
+  chat.cjs             chat messages of a time range: Twitch VOD / Twitch clip (via its VOD) / YouTube replay
+  chatRender.cjs       hidden window renders chat states → PNGs → ffmpeg → transparent Chat.mov (qtrle)
 src/                   renderer (React 19 + Vite 8, plain JSX)
   App.jsx              shell: tabs, top field (link/channel/name + YouTube/Twitch picker), channel state, projects,
                        morph animation, downloads button, settings
@@ -102,6 +104,8 @@ src/                   renderer (React 19 + Vite 8, plain JSX)
                        TimeField, Mini, Settings (+ TopazSettings, PremiereSettings), CaptionsEditor, UpdatePill, ui.jsx
   lib/facecam.js       MediaPipe face detection (WASM, offline) ; lib/camrect.js = border search (pure, testable)
   lib/storyboard.js    storyboard sprite cell → CSS (filmstrip, scrub preview, clip thumbnails)
+  chatrender.js        the #chatrender page: canvas drawing of the chat overlay (no React)
+  components/KeyMap.jsx  visual QWERTZ keyboard of all hotkeys (Settings + F1 overlay) — keep in sync with Editor keys
   styles.css + styles-v2.css   base styles + the v2 shell/editor/browse/home styles
 public/                models/*.tflite (MediaPipe face detector), icon.png/ico; mediapipe wasm copied at build
 scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs, dev/ (test harnesses, see below)
@@ -181,12 +185,33 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 - Twitch VOD storyboards come from `seekPreviewsURL` (yt-dlp has none) → filmstrip + scrub preview. Twitch clips
   get ~6 ffmpeg frames instead.
 
+**Chat overlay** (export option "Chat overlay" → `<prefix>Chat.mov` next to the gameplay + V4 "Chat" in Premiere)
+- Twitch: same offset-only comment requests as the activity graph, here walking every page of the range (8 s chunks
+  in parallel, dedupe by comment id, same-second messages spread over the second). `userColor` is often null →
+  Twitch's default palette by name hash. Clips: `clip(slug){videoOffsetSeconds video{id}}` → chat of the VOD
+  (fails if the VOD is gone).
+- YouTube: watch page `liveChatRenderer.continuations[0].reloadContinuationData` ("Top chat replay"; the sub-menu
+  "Live chat replay" token answers 400) → POST `live_chat/get_live_chat_replay` with
+  `currentPlayerState.playerOffsetMs` to seek, follow `liveChatReplayContinuationData`. Emoji come as images,
+  7TV works for YouTube channels (`7tv.io/v3/users/youtube/<UC…>`). Owner/mod/member get YouTube's colors.
+- Rendering needs a canvas → hidden BrowserWindow `#chatrender` draws one PNG per chat change (15 fps grid), main
+  writes them + an ffmpeg concat list with exact durations → `fps=30,format=argb` → qtrle. Emote images load with
+  `crossOrigin` (main injects ACAO * on all https responses, otherwise the canvas would be tainted).
+- 15 s of history are pre-filled so the overlay doesn't start empty. Chat failures only add a job warning.
+
+**Hotkeys** (Premiere-ish, right hand on J K L): K = play/pause (toggle), L = play / 2× / 4× / 8×, **any pause resets
+the speed**, J = −10 s, I/O = IN/OUT (with a clip selected they trim it; O creates the clip and deselects so the next I
+starts a new one), U = marker (per source, `srcState.markers`, snap target for all drags), `,` / `.` = previous /
+next marker, P = play the selected clip, N new clip, S split, F1 = keyboard overlay. Every hotkey flashes an OSD in
+the player. When you add/change a key, update `KeyMap.jsx` too.
+
 **Projects / editor model**
 - A project = sources (bin) + per-source state + clips. Autosaved 0.7 s after changes; signed media URLs are not
   stored — opening a project shows it instantly from the stored info (`stale: true`) and re-probes in the background.
 - Clips carry `on` (checkbox = included in Download) and `sent`. A download unchecks what it took, so the next
   Download only takes new clips. Right-click (timeline segment or list) = download just that clip.
-- I/O: with a clip selected they trim it; without, I sets a pending IN and O creates the clip IN→playhead.
+- I/O: with a clip selected they trim it; without, I sets a pending IN and O creates the clip IN→playhead (and
+  deselects it).
 - React gotcha that broke facecam auto-detect once: never compute a return value inside a `setState(fn)` updater
   (it runs later) — `initSource` decides from `srcStateRef`.
 

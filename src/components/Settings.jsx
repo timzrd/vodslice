@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Icon, Seg, Toggle, Spinner, Kbd } from './ui.jsx';
 import TopazSettings from './TopazSettings.jsx';
 import PremiereSettings from './PremiereSettings.jsx';
+import KeyboardMap from './KeyMap.jsx';
 
 function Row({ label, hint, children, wide }) {
   return (
@@ -25,32 +26,6 @@ function Section({ title, icon, children, id }) {
     </section>
   );
 }
-
-export const SHORTCUTS = [
-  ['Ctrl+V', 'Paste a video or channel link (anywhere)'],
-  ['Ctrl+K', 'Search a streamer'],
-  ['Wheel / Ctrl+wheel', 'Scroll / zoom the timeline'],
-  ['Space', 'Play / pause'],
-  ['J', 'Back 10 s'],
-  ['L / K', 'Play faster (Premiere-style) / stop'],
-  ['Shift+. / Shift+,', 'Speed up / down'],
-  ['← / →', 'Back / forward 5 s (Shift: 1 s)'],
-  ['↑ / ↓', 'Volume up / down (5 % steps)'],
-  ['M', 'Mute / unmute'],
-  ['I / O', 'Trim the selected clip — or IN, then O creates a clip'],
-  ['N', 'New clip at playhead'],
-  ['Shift+N', 'Add a part to the selected clip'],
-  ['S', 'Split the selected clip at the playhead'],
-  ['Esc', 'Deselect'],
-  ['Del', 'Delete the selected clip / part'],
-  ['Ctrl+A', 'Check / uncheck all clips'],
-  ['Ctrl+Z / Ctrl+Y', 'Undo / redo clip edits'],
-  ['F', 'Facecam on / off'],
-  ['D', 'Auto-detect facecam'],
-  ['Ctrl+Enter', 'Download'],
-  ['Ctrl+Shift+O', 'Open output folder'],
-  ['Ctrl+,', 'Settings'],
-];
 
 export default function Settings({ settings, onClose, tools, topaz: topazInit, section }) {
   const s = settings;
@@ -370,15 +345,8 @@ export default function Settings({ settings, onClose, tools, topaz: topazInit, s
             )}
           </Section>
 
-          <Section title="Shortcuts" icon="keyboard">
-            <div className="shortcuts">
-              {SHORTCUTS.map(([k, d]) => (
-                <div key={k} className="sc">
-                  <Kbd>{k}</Kbd>
-                  <span>{d}</span>
-                </div>
-              ))}
-            </div>
+          <Section title="Hotkeys" icon="keyboard" id="keys">
+            <KeyboardMap />
           </Section>
           <p className="about">Vodslice {info && info.version}</p>
         </div>

@@ -24,6 +24,12 @@ updates itself from this repository's releases.
   download just that one. Downloaded clips stay in the list (✓) and get unchecked.
 - **Chat highlights** – Twitch VODs get a chat-activity graph on the timeline with the most spammed emote at each
   peak (KEKW, OMEGALUL, …; 7TV/BTTV/FFZ included) — click an emote to jump there. YouTube shows "most replayed".
+- **Chat overlay** – optional `Chat.mov` per clip with a transparent background: colored names and 7TV/BTTV/FFZ
+  emotes, from Twitch VODs, Twitch clips (via their VOD) and YouTube streams with chat replay. Drop it on top of
+  your edit — the Premiere sequence gets it on its own track.
+- **Made for hotkeys** – right hand on J K L (back / play-pause / faster), U I O for marker / IN / OUT. I…O, I…O
+  cuts clip after clip; markers (U) are snap points and jump targets (`,` `.`). Every key flashes a small hint in
+  the player, F1 shows the whole keyboard.
 - **Only download what you need** – a parallel HLS downloader fetches just the segments of your time ranges
   (16 connections by default). A 2-minute 1080p60 part of an 8-hour VOD takes seconds.
 - **Clips & segments** – `+ New clip` = separate output (own folder), `+ Segment` = another range that gets
@@ -86,12 +92,17 @@ version, builds the installer, commits, pushes and creates the release (needs `g
 | --- | --- |
 | Ctrl+V | Paste a video or channel link (anywhere) |
 | Ctrl+K / Ctrl+F | Search a streamer |
-| Space / J | Play-pause / −10 s |
-| L / K | Play faster (Premiere-style shuttle) / stop |
+| Space / K | Play / pause (any pause resets the speed) |
+| J | −10 s (Shift: −2 s) |
+| L | Play, then 2× / 4× / 8× |
+| U | Marker at the playhead (again to remove) |
+| , / . | Previous / next marker |
+| P | Play the selected clip |
 | Shift+. / Shift+, | Speed up / down |
+| F1 | Keyboard map |
 | ← / → | −5 s / +5 s (Shift: 1 s) |
 | ↑ / ↓ / M | Volume ±5 % / mute |
-| I / O | Selected clip: trim start / end · nothing selected: IN, then O creates the clip |
+| I / O | Selected clip: trim start / end · otherwise IN, then O creates the clip (next I starts a new one) |
 | N / Shift+N | New clip / add part to selected clip |
 | S | Split the selected clip at the playhead |
 | Esc | Deselect |

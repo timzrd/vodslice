@@ -119,6 +119,8 @@ export default function Timeline({
   onMenu,
   activity,
   mark,
+  markers = [],
+  onMarkerDelete,
 }) {
   const [lnRef, lnW] = useWidth();
   const zoomRef = useRef(null);
@@ -140,7 +142,7 @@ export default function Timeline({
 
   const snap = (t, ignoreId, v) => {
     const px = ((v.end - v.start) / Math.max(1, lnW)) * 8;
-    const cands = [playhead, mark];
+    const cands = [playhead, mark, ...markers.map((m) => m.t)];
     segments.forEach((s) => s.id !== ignoreId && cands.push(s.start, s.end));
     for (const c of cands) if (c != null && Math.abs(c - t) < px) return c;
     return Math.round(t);
@@ -362,6 +364,25 @@ export default function Timeline({
                 <em>{fmt(t)}</em>
               </span>
             ))}
+            {markers
+              .filter((m) => m.t >= view.start && m.t <= view.end)
+              .map((m) => (
+                <span
+                  key={m.id}
+                  className="tl-marker"
+                  style={{ left: xOf(m.t) }}
+                  title={`Marker ${markers.indexOf(m) + 1} · ${fmt(m.t)} — click to jump, right-click to remove`}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    if (e.button === 0) onSeek(m.t, 'click');
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onMarkerDelete && onMarkerDelete(m.id);
+                  }}
+                />
+              ))}
           </div>
           <div
             className="lane"
@@ -373,6 +394,11 @@ export default function Timeline({
             onContextMenu={(e) => onMenu && onMenu(e, null, tAt(e.clientX))}
           >
             <Filmstrip info={info} thumbs={thumbs} view={view} width={lnW} height={laneH} />
+            {markers
+              .filter((m) => m.t >= view.start && m.t <= view.end)
+              .map((m) => (
+                <span key={m.id} className="lane-marker" style={{ left: xOf(m.t) }} />
+              ))}
             {!segments.some((s) => s.end > view.start && s.start < view.end) && !ghost && mark == null && (
               <span className="lane-hint">Drag here to mark a clip · or I / O at the playhead</span>
             )}

@@ -93,6 +93,13 @@ const DEFAULTS = {
       posY: null,              // null = on the facecam/gameplay line
     },
   },
+  chat: {
+    enabled: false,            // render the chat of each clip as a transparent Chat.mov (Twitch / YouTube replay)
+    width: 520,
+    height: 820,
+    fontSize: 26,
+    prefill: 15,               // seconds of chat history shown at the start
+  },
   premiereLayouts: {},         // channelKey -> {gameplayRect} for the vertical layout
   facecamPresets: {},          // channelKey -> {x,y,w,h} normalized
   cropPresets: {},             // channelKey -> {x} normalized (9:16 crop position)

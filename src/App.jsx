@@ -8,6 +8,7 @@ import Logo from './components/Logo.jsx';
 import UpdatePill from './components/UpdatePill.jsx';
 import CaptionsEditor from './components/CaptionsEditor.jsx';
 import { MenuProvider } from './components/ContextMenu.jsx';
+import { KeysOverlay } from './components/KeyMap.jsx';
 import { Icon, Spinner, Kbd } from './components/ui.jsx';
 import { fmtBytes } from './lib/time.js';
 import { ACTIVE } from './components/Jobs.jsx';
@@ -62,6 +63,7 @@ export default function App() {
   const [busy, setBusy] = useState(false);
   const [flyer, setFlyer] = useState(null);
   const [renaming, setRenaming] = useState(null);
+  const [showKeys, setShowKeys] = useState(false);
   const editor = useRef(null);
   const input = useRef(null);
   const browseEl = useRef(null);
@@ -255,6 +257,9 @@ export default function App() {
         e.preventDefault();
         const done = [...jobs].reverse().find((j) => j.status === 'done');
         window.api.openPath(done && done.outputs[0] ? done.outputs[0].dir : settingsRef.current.output.baseDir);
+      } else if (e.key === 'F1' || (e.key === '?' && !typing)) {
+        e.preventDefault();
+        setShowKeys((v) => !v);
       } else if (e.key === 'Escape' && picker) setPicker(null);
     };
     window.addEventListener('keydown', onKey);
@@ -377,7 +382,7 @@ export default function App() {
               ref={editor}
               settings={settings}
               active={view === 'edit'}
-              modalOpen={!!showSettings || !!capJob || !!renaming}
+              modalOpen={!!showSettings || !!capJob || !!renaming || showKeys}
               toast={toast}
               topazInfo={topazInfo}
               jobs={jobs}
@@ -390,6 +395,7 @@ export default function App() {
               channel={ch}
               onChannel={() => setView('browse')}
               onRenameProject={(p) => p && setRenaming({ id: p.id, name: p.name || '' })}
+              onShowKeys={() => setShowKeys(true)}
             />
           </div>
           {view === 'browse' && (
@@ -453,6 +459,7 @@ export default function App() {
 
         {capJob && <CaptionsEditor job={jobs.find((j) => j.id === capJob.id) || capJob} settings={settings} notify={toast} onClose={() => setCapJob(null)} />}
         {showSettings && <Settings settings={settings} tools={tools} topaz={topazInfo} section={typeof showSettings === 'string' ? showSettings : null} onClose={() => setShowSettings(false)} />}
+        {showKeys && <KeysOverlay onClose={() => setShowKeys(false)} />}
 
         {toolSetup && (
           <div className="setup">

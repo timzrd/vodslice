@@ -50,12 +50,22 @@ const P = {
   compass: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM15.5 8.5l-2 5-5 2 2-5Z',
   search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4',
   more: 'M5 12h.01M12 12h.01M19 12h.01',
-  scissorsSm: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20',
+  zap: 'M13 2 4 14h7l-1 8 9-12h-7Z',
+  flag: 'M5 21V4M5 4h11l-2 4 2 4H5',
+  markerPrev: 'M11 6l-6 6 6 6M19 4v16M15 4l-4 0',
+  markerNext: 'M13 6l6 6-6 6M5 4v16M9 4l4 0',
+  rewind: 'M11 7 4 12l7 5ZM20 7l-7 5 7 5Z',
+  forward: 'M13 7l7 5-7 5ZM4 7l7 5-7 5Z',
+  playClip: 'M4 5h3M4 19h3M4 5v14M20 5h-3M20 19h-3M20 5v14M10 8.5v7l6-3.5Z',
+  undo: 'M9 14 4 9l5-5M4 9h11a5 5 0 0 1 0 10h-3',
+  redo: 'M15 14l5-5-5-5M20 9H9a5 5 0 0 0 0 10h3',
+  esc: 'M6 6l12 12M18 6 6 18',
+  scissorsSm:'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20',
 };
 
 export function Icon({ name, size = 16, stroke = 2, fill = false, style, className }) {
   const d = P[name] || '';
-  const filled = fill || name === 'play' || name === 'pause';
+  const filled = fill || name === 'play' || name === 'pause' || name === 'zap' || name === 'rewind' || name === 'forward';
   return (
     <svg
       className={className}

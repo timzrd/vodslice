@@ -105,7 +105,7 @@ export function JobRow({ job, compact, notify, onCaptions }) {
             )}
             {!compact &&
               files.map((f) => {
-                const name = f.split(/[\\/]/).pop().replace(/\.mp4$/i, '');
+                const name = f.split(/[\\/]/).pop().replace(/\.(mp4|mov)$/i, '');
                 return (
                   <span
                     key={f}
@@ -117,7 +117,7 @@ export function JobRow({ job, compact, notify, onCaptions }) {
                       window.api.startDrag([f]);
                     }}
                   >
-                    <Icon name={/facecam/i.test(name) ? (/enhanced/i.test(name) ? 'sparkles' : 'user') : 'film'} size={11} />
+                    <Icon name={/chat$/i.test(name) ? 'chat' : /facecam/i.test(name) ? (/enhanced/i.test(name) ? 'sparkles' : 'user') : 'film'} size={11} />
                     {name.replace(/^.* - /, '')}
                   </span>
                 );

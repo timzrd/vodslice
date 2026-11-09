@@ -137,6 +137,15 @@ function buildXml(o) {
     v2Xml = `${clipHead(fid, path.basename(f.path))}${fileXml('file-facecam', { ...f, hasAudio: false }, rate, frames, defined)}${motionFilter(fm)}${needCrop ? cropFilter(c) : ''}</clipitem>`;
   }
 
+  // ---- V4 chat overlay (transparent): lower left of the gameplay area, easy to move in Premiere ----
+  let v4Xml = '';
+  if (o.chat) {
+    const c = o.chat;
+    const cs = Math.min(1, (W * 0.42) / c.width, (botH * 0.8) / c.height);
+    const cm = motion(W, H, c.width, c.height, cs, 36 + (c.width * cs) / 2, H - 60 - (c.height * cs) / 2, o.calibration);
+    v4Xml = `${clipHead(nextId(), path.basename(c.path))}${fileXml('file-chat', { ...c, hasAudio: false }, rate, frames, defined)}${motionFilter(cm)}</clipitem>`;
+  }
+
   // ---- V3 caption overlay ----
   let v3Xml = '';
   if (o.overlay) {
@@ -169,6 +178,7 @@ ${rateXml(rate)}
 ${vTrack(v1Xml, 'Gameplay')}
 ${vTrack(v2Xml, 'Facecam')}
 ${vTrack(v3Xml, 'Captions')}
+${o.chat ? vTrack(v4Xml, 'Chat') : ''}
 </video>
 <audio>
 <numOutputChannels>2</numOutputChannels>

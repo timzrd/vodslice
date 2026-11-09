@@ -154,6 +154,40 @@ export default function ExportPanel({ x }) {
         </Opt>
 
         <Opt
+          id="chat"
+          open={open}
+          setOpen={setOpen}
+          icon="chat"
+          label="Chat overlay"
+          summary={s.chat && s.chat.enabled ? `Chat.mov · transparent · ${s.chat.width}×${s.chat.height}` : 'Twitch / YouTube chat with emotes'}
+          on={!!(s.chat && s.chat.enabled)}
+          onToggle={(v) => window.api.setSettings({ chat: { enabled: v } })}
+          title="Render the chat of each clip as a transparent video (colored names, 7TV / BTTV / FFZ emotes)"
+        >
+          <div className="pc-row">
+            <span className="pc-label">Size</span>
+            <Seg
+              size="sm"
+              value={`${s.chat.width}x${s.chat.height}`}
+              onChange={(v) => {
+                const [w, h] = v.split('x').map(Number);
+                window.api.setSettings({ chat: { width: w, height: h } });
+              }}
+              options={[
+                { value: '520x820', label: 'Tall' },
+                { value: '640x640', label: 'Square' },
+                { value: '900x420', label: 'Wide' },
+              ]}
+            />
+          </div>
+          <div className="pc-row">
+            <span className="pc-label">Text size · {s.chat.fontSize}px</span>
+            <input type="range" min="16" max="44" step="1" value={s.chat.fontSize} onChange={(e) => window.api.setSettings({ chat: { fontSize: Number(e.target.value) } })} />
+          </div>
+          <p className="pc-hint">Twitch VODs and clips (their VOD must still exist) and YouTube streams with chat replay. Lands as Chat.mov next to the gameplay — and on its own track in the Premiere sequence.</p>
+        </Opt>
+
+        <Opt
           id="crop"
           open={open}
           setOpen={setOpen}

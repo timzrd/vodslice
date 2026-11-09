@@ -65,4 +65,11 @@ contextBridge.exposeInMainWorld('api', {
   projectSave: (p) => ipcRenderer.invoke('projects:save', p),
   projectRemove: (id) => ipcRenderer.invoke('projects:remove', id),
   projectRename: (id, name) => ipcRenderer.invoke('projects:rename', id, name),
+  // hidden chat-render window
+  onChatRenderJob: on('chatrender:job'),
+  chatRenderReady: () => ipcRenderer.send('chatrender:ready'),
+  chatRenderStart: (id, total) => ipcRenderer.send('chatrender:start', id, total),
+  chatRenderFrame: (id, i, t, bytes) => ipcRenderer.send('chatrender:frame', id, i, t, bytes),
+  chatRenderDone: (id) => ipcRenderer.send('chatrender:done', id),
+  chatRenderError: (id, msg) => ipcRenderer.send('chatrender:error', id, msg),
 });

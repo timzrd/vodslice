@@ -14,7 +14,7 @@ export function Storyboard({ sb, t, width = 160 }) {
  * YouTube-style progress bar inside the bottom of the video. Clips show up as glowing ranges, chat peaks as
  * emotes above the bar. Dragging reports 'move' (cheap preview) and 'end' (final seek).
  */
-export default function ScrubBar({ duration, playhead, segments, activeId, heatmap, chat, chapters, storyboard, onSeek, edge, layouts, onLayoutDelete, emotes = true }) {
+export default function ScrubBar({ duration, playhead, segments, activeId, heatmap, chat, chapters, storyboard, onSeek, edge, layouts, onLayoutDelete, emotes = true, markers = [], onMarkerDelete }) {
   const ref = useRef(null);
   const [w, setW] = useState(0);
   const [hover, setHover] = useState(null);
@@ -120,6 +120,23 @@ export default function ScrubBar({ duration, playhead, segments, activeId, heatm
           ))}
         </div>
         <span className="scrub-knob" style={{ left: pct(ph) }} />
+        {markers.map((m, i) => (
+          <span
+            key={m.id}
+            className="scrub-marker"
+            style={{ left: pct(m.t) }}
+            title={`Marker ${i + 1} · ${fmt(m.t)} — click to jump, right-click to remove`}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              if (e.button === 0) onSeek(m.t, 'end');
+            }}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onMarkerDelete && onMarkerDelete(m.id);
+            }}
+          />
+        ))}
         {(layouts || []).map((k, i) =>
           i === 0 ? null : (
             <span
