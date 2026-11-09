@@ -238,6 +238,9 @@ function runJson(tools, url, signal) {
     p.on('close', (code) => {
       if (code !== 0) {
         const line = err.split(/\r?\n/).filter((l) => /ERROR/.test(l)).pop() || err.trim().split(/\r?\n/).pop() || `yt-dlp exited ${code}`;
+        // YouTube's "Sign in to confirm you're not a bot": a plain explanation + what the user can do
+        if (/confirm you.{1,3}re not a bot|sign in to confirm/i.test(line))
+          return reject(new Error('BOTCHECK: YouTube wants a sign-in for your connection right now (usually after a lot of requests). Wait a while, or let Vodslice use your YouTube login from the browser.'));
         return reject(new Error(line.replace(/^ERROR:\s*/, '')));
       }
       try {

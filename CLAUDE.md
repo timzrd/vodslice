@@ -123,6 +123,11 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 - Separate HLS audio is raw ADTS → remux to m4a before seeking. Cut uses input-seek + `-c copy` (keyframe
   accurate) unless "Frame-exact" or the source is VP9/AV1 with codec mode "convert" (→ H.264 via NVENC).
 - YouTube now needs a JS runtime: yt-dlp runs with `--js-runtimes deno:<path>`; Deno is installed privately.
+- "Sign in to confirm you're not a bot" (YouTube flags the IP, e.g. after many test requests): probe turns it into
+  a `BOTCHECK:` error → toast with "Use my browser login" → Settings › Downloads › YouTube / Twitch login
+  (`--cookies-from-browser` or a cookies.txt). Don't add automatic player-client switching or similar tricks to get
+  around the check — the user's own login (or waiting) is the way. Keep test runs against YouTube small.
+- yt-dlp runs with `PYTHONIOENCODING=utf-8` (otherwise its messages arrive garbled, e.g. "you�re").
 
 **Preview**
 - YouTube media URLs are **bound to the IP family yt-dlp used** (IPv6 here); Chromium connects via IPv4 → 403.

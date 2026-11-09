@@ -16,9 +16,10 @@ import { ACTIVE } from './components/Jobs.jsx';
 let tid = 0;
 function useToasts() {
   const [toasts, setToasts] = useState([]);
-  const push = useCallback((text, tone = 'info', ms = 3800) => {
+  /** action = { label, onClick } shows a button in the toast */
+  const push = useCallback((text, tone = 'info', ms = 3800, action = null) => {
     const id = ++tid;
-    setToasts((t) => [...t, { id, text, tone }]);
+    setToasts((t) => [...t.filter((x) => !(action && x.text === text)), { id, text, tone, action }]);
     setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), ms);
   }, []);
   return [toasts, push];
@@ -487,8 +488,19 @@ export default function App() {
 
         <div className="toasts">
           {toasts.map((t) => (
-            <div key={t.id} className={`toast ${t.tone}`}>
-              {t.text}
+            <div key={t.id} className={`toast ${t.tone} ${t.action ? 'has-action' : ''}`}>
+              <span>{t.text}</span>
+              {t.action && (
+                <button
+                  className="btn sm primary"
+                  onClick={() => {
+                    t.action.onClick();
+                    setToasts((list) => list.filter((x) => x.id !== t.id));
+                  }}
+                >
+                  {t.action.label}
+                </button>
+              )}
             </div>
           ))}
         </div>

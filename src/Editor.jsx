@@ -563,7 +563,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         }
         if (needDetect && s.facecam.enabled && s.facecam.autoDetect) setTimeout(() => runDetectRef.current && runDetectRef.current(inf), 300);
       } catch (e) {
-        toast(e.message || String(e), 'err', 7000);
+        const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
+        if (msg.startsWith('BOTCHECK: ')) toast(msg.slice(10), 'warn', 20000, { label: 'Use my browser login', onClick: () => openSettings('downloads') });
+        else toast(msg, 'err', 7000);
       } finally {
         if (loadingUrl.current === url) loadingUrl.current = null;
         setPending(null);
@@ -1169,7 +1171,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
           if (inf.cacheId === act && t0) setTimeout(() => player.current && player.current.seek(t0), 600);
         } catch (e) {
           setSources((m) => (m[id] ? { ...m, [id]: { ...m[id], stale: false, error: e.message } } : m));
-          toast(`Could not reload ${srcs[id].title || 'a video'}: ${e.message}`, 'warn', 6000);
+          const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
+          if (msg.startsWith('BOTCHECK: ')) toast(msg.slice(10), 'warn', 20000, { label: 'Use my browser login', onClick: () => openSettings('downloads') });
+          else toast(`Could not reload ${srcs[id].title || 'a video'}: ${msg}`, 'warn', 6000);
         }
       }
     },

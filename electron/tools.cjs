@@ -52,7 +52,8 @@ class Tools {
   }
 
   env() {
-    return { ...process.env, PATH: this.binDir + path.delimiter + (process.env.PATH || '') };
+    // UTF-8 output from yt-dlp (otherwise Windows' console code page garbles ’ ä ö ü in messages and titles)
+    return { ...process.env, PATH: this.binDir + path.delimiter + (process.env.PATH || ''), PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
   }
 
   missing() {

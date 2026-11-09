@@ -1867,6 +1867,18 @@
   color: var(--muted);
 }
 
+/* ---------- toasts with an action ---------- */
+.toast.has-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  pointer-events: auto;
+}
+.toast.has-action .btn {
+  align-self: flex-end;
+}
+
 /* ---------- speed button ---------- */
 .rate-btn.glow {
   box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 55%, transparent);

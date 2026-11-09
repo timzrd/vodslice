@@ -267,7 +267,7 @@ export default function Settings({ settings, onClose, tools, topaz: topazInit, s
             </Row>
           </Section>
 
-          <Section title="Downloads" icon="download">
+          <Section title="Downloads" icon="download" id="downloads">
             <Row label="Parallel connections" hint="More = faster on fast internet.">
               <div className="slider-row">
                 <input type="range" min="4" max="32" step="2" value={s.download.connections} onChange={(e) => set({ download: { connections: Number(e.target.value) } })} />
@@ -281,14 +281,28 @@ export default function Settings({ settings, onClose, tools, topaz: topazInit, s
                 options={[1, 2, 3].map((n) => ({ value: n, label: String(n) }))}
               />
             </Row>
-            <Row label="Login cookies" hint="Only needed for sub-only / age-restricted videos. Firefox works best.">
-              <select className="input sm" value={s.download.cookiesFromBrowser} onChange={(e) => set({ download: { cookiesFromBrowser: e.target.value } })}>
+            <Row
+              label="YouTube / Twitch login"
+              hint="Uses your own login from the browser — for “Sign in to confirm you’re not a bot”, sub-only and age-restricted videos. Firefox works best; Chrome / Edge lock their cookies while they are open, use a cookies.txt then."
+            >
+              <select
+                className="input sm"
+                value={s.download.cookiesFile ? '__file' : s.download.cookiesFromBrowser}
+                onChange={async (e) => {
+                  const v = e.target.value;
+                  if (v === '__file') {
+                    const f = await window.api.pickFile([{ name: 'cookies.txt', extensions: ['txt'] }]);
+                    if (f) set({ download: { cookiesFile: f, cookiesFromBrowser: '' } });
+                  } else set({ download: { cookiesFromBrowser: v, cookiesFile: '' } });
+                }}
+              >
                 <option value="">None</option>
                 <option value="firefox">Firefox</option>
                 <option value="chrome">Chrome</option>
                 <option value="edge">Edge</option>
                 <option value="brave">Brave</option>
                 <option value="opera">Opera</option>
+                <option value="__file">{s.download.cookiesFile ? `File: ${s.download.cookiesFile.split(/[\\/]/).pop()}` : 'cookies.txt file…'}</option>
               </select>
             </Row>
           </Section>
