@@ -241,6 +241,9 @@ function runJson(tools, url, signal) {
         // YouTube's "Sign in to confirm you're not a bot": a plain explanation + what the user can do
         if (/confirm you.{1,3}re not a bot|sign in to confirm/i.test(line))
           return reject(new Error('BOTCHECK: YouTube wants a sign-in for your connection right now (usually after a lot of requests). Wait a while, or let Vodslice use your YouTube login from the browser.'));
+        // live browser cookies: Chromium browsers lock them while open (or encrypt them for other apps)
+        if (/could not copy .*cookie|cookie database|failed to decrypt|dpapi|could not find .* cookies/i.test(err))
+          return reject(new Error('LOGIN: Vodslice can’t read your browser login while the browser is open. Set it up once — it takes a few seconds.'));
         return reject(new Error(line.replace(/^ERROR:\s*/, '')));
       }
       try {

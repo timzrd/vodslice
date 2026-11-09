@@ -46,8 +46,10 @@ const DEFAULTS = {
   download: {
     connections: 16,
     concurrentJobs: 2,
-    cookiesFromBrowser: '',    // '' | 'firefox' | 'chrome' | 'edge' | 'brave' ...
-    cookiesFile: '',
+    cookiesFromBrowser: '',    // '' | 'firefox' | 'chrome' | 'edge' | 'brave' ... (read live by yt-dlp)
+    cookiesFile: '',           // cookies.txt (the login wizard writes %APPDATA%\Vodslice\cookies.txt)
+    loginFrom: '',             // where the imported login came from ('brave', 'file', …)
+    loginAt: 0,
   },
   ui: {
     volume: 0.8,               // preview volume 0..1

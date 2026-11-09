@@ -67,7 +67,7 @@ const storable = (inf) => {
  * The editing workspace: media bin | player | clips + export, timeline below.
  * Owns the project state (sources, per-source facecam/crop/Premiere boxes, clips) and autosaves it.
  */
-const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, jobs, onProject, openSettings, onAddMedia, onChannel, channel, modalOpen, onRenameProject, onShowKeys }, ref) {
+const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, jobs, onProject, openSettings, onAddMedia, onChannel, channel, modalOpen, onRenameProject, onShowKeys, onLogin }, ref) {
   const openMenu = useMenu();
   const [project, setProject] = useState(null); // {id, name, created}
   const [sources, setSources] = useState({});
@@ -564,7 +564,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         if (needDetect && s.facecam.enabled && s.facecam.autoDetect) setTimeout(() => runDetectRef.current && runDetectRef.current(inf), 300);
       } catch (e) {
         const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
-        if (msg.startsWith('BOTCHECK: ')) toast(msg.slice(10), 'warn', 20000, { label: 'Use my browser login', onClick: () => openSettings('downloads') });
+        if (/^(BOTCHECK|LOGIN): /.test(msg)) toast(msg.replace(/^(BOTCHECK|LOGIN): /, ''), 'warn', 20000, { label: 'Set up my login', onClick: () => onLogin && onLogin(url) });
         else toast(msg, 'err', 7000);
       } finally {
         if (loadingUrl.current === url) loadingUrl.current = null;
@@ -1172,7 +1172,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         } catch (e) {
           setSources((m) => (m[id] ? { ...m, [id]: { ...m[id], stale: false, error: e.message } } : m));
           const msg = String(e.message || e).replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
-          if (msg.startsWith('BOTCHECK: ')) toast(msg.slice(10), 'warn', 20000, { label: 'Use my browser login', onClick: () => openSettings('downloads') });
+          if (/^(BOTCHECK|LOGIN): /.test(msg)) toast(msg.replace(/^(BOTCHECK|LOGIN): /, ''), 'warn', 20000, { label: 'Set up my login', onClick: () => onLogin && onLogin(null) });
           else toast(`Could not reload ${srcs[id].title || 'a video'}: ${msg}`, 'warn', 6000);
         }
       }

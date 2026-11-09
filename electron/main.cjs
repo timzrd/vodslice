@@ -18,6 +18,7 @@ const youtube = require('./youtube.cjs');
 const twitch = require('./twitch.cjs');
 const { Projects } = require('./projects.cjs');
 const { ChatRenderer } = require('./chatRender.cjs');
+const login = require('./login.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ICON = path.join(DIST, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -313,6 +314,35 @@ function registerIpc() {
       return { activity: await chatJobs.get(twitchId) };
     })
   );
+  // ---- YouTube / Twitch login (cookies for yt-dlp) ----
+  const loginSaved = (r, from) => {
+    if (r.ok) store.patch({ download: { cookiesFile: r.file, cookiesFromBrowser: '', loginFrom: from, loginAt: Date.now() } });
+    return r;
+  };
+  ipcMain.handle('login:running', (_e, browser) => login.browserRunning(browser));
+  ipcMain.handle('login:import', async (_e, browser) => {
+    try {
+      return loginSaved(await login.importLogin(tools, app.getPath('userData'), browser), browser);
+    } catch (e) {
+      return { ok: false, code: 'ERROR', error: e.message };
+    }
+  });
+  ipcMain.handle('login:file', async (e) => {
+    const win = BrowserWindow.fromWebContents(e.sender);
+    const r = await dialog.showOpenDialog(win, { properties: ['openFile'], filters: [{ name: 'cookies.txt', extensions: ['txt'] }] });
+    if (r.canceled) return { ok: false, code: 'CANCELED' };
+    try {
+      return loginSaved(login.useCookiesFile(app.getPath('userData'), r.filePaths[0]), 'file');
+    } catch (err) {
+      return { ok: false, code: 'ERROR', error: err.message };
+    }
+  });
+  ipcMain.handle('login:clear', () => {
+    const f = store.get().download.cookiesFile;
+    if (f && f.startsWith(app.getPath('userData'))) fs.rmSync(f, { force: true });
+    store.patch({ download: { cookiesFile: '', cookiesFromBrowser: '', loginFrom: '', loginAt: 0 } });
+    return true;
+  });
   // ---- projects ----
   ipcMain.handle('projects:list', () => projects.list());
   ipcMain.handle('projects:get', (_e, id) => projects.get(id));

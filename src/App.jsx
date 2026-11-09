@@ -9,6 +9,7 @@ import UpdatePill from './components/UpdatePill.jsx';
 import CaptionsEditor from './components/CaptionsEditor.jsx';
 import { MenuProvider } from './components/ContextMenu.jsx';
 import { KeysOverlay } from './components/KeyMap.jsx';
+import LoginDialog from './components/LoginDialog.jsx';
 import { Icon, Spinner, Kbd } from './components/ui.jsx';
 import { fmtBytes } from './lib/time.js';
 import { ACTIVE } from './components/Jobs.jsx';
@@ -65,6 +66,7 @@ export default function App() {
   const [flyer, setFlyer] = useState(null);
   const [renaming, setRenaming] = useState(null);
   const [showKeys, setShowKeys] = useState(false);
+  const [login, setLogin] = useState(null); // { retry: url | null }
   const editor = useRef(null);
   const input = useRef(null);
   const browseEl = useRef(null);
@@ -284,7 +286,7 @@ export default function App() {
   });
 
   useEffect(() => {
-    window.__vs = { ...(window.__vs || {}), setView, openChannel, submit, pickVideo, openProject, projects: () => projects };
+    window.__vs = { ...(window.__vs || {}), setView, openChannel, submit, pickVideo, openProject, projects: () => projects, login: () => setLogin({ retry: null }) };
   });
 
   if (!settings) return <div className="boot" />;
@@ -383,7 +385,8 @@ export default function App() {
               ref={editor}
               settings={settings}
               active={view === 'edit'}
-              modalOpen={!!showSettings || !!capJob || !!renaming || showKeys}
+              modalOpen={!!showSettings || !!capJob || !!renaming || showKeys || !!login}
+              onLogin={(url) => setLogin({ retry: url || null })}
               toast={toast}
               topazInfo={topazInfo}
               jobs={jobs}
@@ -459,7 +462,22 @@ export default function App() {
         )}
 
         {capJob && <CaptionsEditor job={jobs.find((j) => j.id === capJob.id) || capJob} settings={settings} notify={toast} onClose={() => setCapJob(null)} />}
-        {showSettings && <Settings settings={settings} tools={tools} topaz={topazInfo} section={typeof showSettings === 'string' ? showSettings : null} onClose={() => setShowSettings(false)} />}
+        {showSettings && <Settings settings={settings} tools={tools} topaz={topazInfo} section={typeof showSettings === 'string' ? showSettings : null} onClose={() => setShowSettings(false)} onLogin={() => setLogin({ retry: null })} />}
+        {login && (
+          <LoginDialog
+            settings={settings}
+            onClose={() => setLogin(null)}
+            onDone={
+              login.retry
+                ? () => {
+                    const u = login.retry;
+                    setView('edit');
+                    editor.current.load(u);
+                  }
+                : null
+            }
+          />
+        )}
         {showKeys && <KeysOverlay onClose={() => setShowKeys(false)} />}
 
         {toolSetup && (

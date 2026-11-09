@@ -27,7 +27,7 @@ function Section({ title, icon, children, id }) {
   );
 }
 
-export default function Settings({ settings, onClose, tools, topaz: topazInit, section }) {
+export default function Settings({ settings, onClose, tools, topaz: topazInit, section, onLogin }) {
   const s = settings;
   const [topaz, setTopaz] = useState(topazInit);
   useEffect(() => {
@@ -283,27 +283,17 @@ export default function Settings({ settings, onClose, tools, topaz: topazInit, s
             </Row>
             <Row
               label="YouTube / Twitch login"
-              hint="Uses your own login from the browser — for “Sign in to confirm you’re not a bot”, sub-only and age-restricted videos. Firefox works best; Chrome / Edge lock their cookies while they are open, use a cookies.txt then."
+              hint={
+                s.download.cookiesFile
+                  ? `Signed in${s.download.loginFrom && s.download.loginFrom !== 'file' ? ` with your ${s.download.loginFrom} login` : ' with a cookies.txt'} — used for every download.`
+                  : s.download.cookiesFromBrowser
+                    ? `Reads ${s.download.cookiesFromBrowser} directly — fails while it is open. Set it up once instead.`
+                    : 'Needed when YouTube asks “confirm you’re not a bot”, and for sub-only / age-restricted videos.'
+              }
             >
-              <select
-                className="input sm"
-                value={s.download.cookiesFile ? '__file' : s.download.cookiesFromBrowser}
-                onChange={async (e) => {
-                  const v = e.target.value;
-                  if (v === '__file') {
-                    const f = await window.api.pickFile([{ name: 'cookies.txt', extensions: ['txt'] }]);
-                    if (f) set({ download: { cookiesFile: f, cookiesFromBrowser: '' } });
-                  } else set({ download: { cookiesFromBrowser: v, cookiesFile: '' } });
-                }}
-              >
-                <option value="">None</option>
-                <option value="firefox">Firefox</option>
-                <option value="chrome">Chrome</option>
-                <option value="edge">Edge</option>
-                <option value="brave">Brave</option>
-                <option value="opera">Opera</option>
-                <option value="__file">{s.download.cookiesFile ? `File: ${s.download.cookiesFile.split(/[\\/]/).pop()}` : 'cookies.txt file…'}</option>
-              </select>
+              <button className="btn sm" onClick={onLogin}>
+                <Icon name="user" size={13} /> {s.download.cookiesFile || s.download.cookiesFromBrowser ? 'Manage login' : 'Set up login'}
+              </button>
             </Row>
           </Section>
 

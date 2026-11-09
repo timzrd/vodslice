@@ -1867,6 +1867,123 @@
   color: var(--muted);
 }
 
+/* ---------- login wizard ---------- */
+.modal.login {
+  width: 540px;
+  gap: 14px;
+}
+.login-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.login-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.login-head h3 svg {
+  color: var(--accent);
+}
+.modal.login p {
+  margin: 0;
+  line-height: 1.5;
+}
+.login-browsers {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+.login-br {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 38px;
+  border-radius: 10px;
+  border: 1px solid var(--line2);
+  background: var(--panel);
+  font-weight: 600;
+}
+.login-br:hover {
+  border-color: #414958;
+}
+.login-br.on {
+  border-color: var(--bc);
+  background: color-mix(in srgb, var(--bc) 12%, var(--panel));
+  box-shadow: 0 0 16px color-mix(in srgb, var(--bc) 25%, transparent);
+}
+.lb-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--bc);
+}
+.login-steps {
+  margin: 0;
+  padding-left: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  line-height: 1.45;
+}
+.login-steps b {
+  color: var(--text);
+}
+.login-big {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--bc) 50%, transparent);
+  background: color-mix(in srgb, var(--bc) 10%, var(--panel));
+}
+.login-big div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.login-big b {
+  font-size: 15px;
+}
+.login-big span {
+  color: var(--muted);
+  font-size: 12px;
+}
+.login-ok,
+.login-warn,
+.login-wait {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+}
+.login-ok {
+  color: var(--ok);
+}
+.login-ok.big {
+  font-size: 15px;
+}
+.login-warn {
+  color: var(--warn);
+}
+.login-err {
+  font: 11px/1.4 var(--mono);
+  color: var(--dim);
+  user-select: text;
+}
+.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 /* ---------- toasts with an action ---------- */
 .toast.has-action {
   display: flex;

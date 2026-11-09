@@ -92,6 +92,7 @@ electron/              main process (CommonJS, no build step)
   projects.cjs         %APPDATA%\Vodslice\projects\<id>.json + home-screen summaries
   chat.cjs             chat messages of a time range: Twitch VOD / Twitch clip (via its VOD) / YouTube replay
   chatRender.cjs       hidden window renders chat states → PNGs → ffmpeg → transparent Chat.mov (qtrle)
+  login.cjs            YouTube/Twitch login: one-time cookie import from the browser (or a cookies.txt)
 src/                   renderer (React 19 + Vite 8, plain JSX)
   App.jsx              shell: tabs, top field (link/channel/name + YouTube/Twitch picker), channel state, projects,
                        morph animation, downloads button, settings
@@ -124,9 +125,16 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
   accurate) unless "Frame-exact" or the source is VP9/AV1 with codec mode "convert" (→ H.264 via NVENC).
 - YouTube now needs a JS runtime: yt-dlp runs with `--js-runtimes deno:<path>`; Deno is installed privately.
 - "Sign in to confirm you're not a bot" (YouTube flags the IP, e.g. after many test requests): probe turns it into
-  a `BOTCHECK:` error → toast with "Use my browser login" → Settings › Downloads › YouTube / Twitch login
-  (`--cookies-from-browser` or a cookies.txt). Don't add automatic player-client switching or similar tricks to get
-  around the check — the user's own login (or waiting) is the way. Keep test runs against YouTube small.
+  a `BOTCHECK:` error → toast "Set up my login" → `LoginDialog` (also Settings › Downloads). Don't add automatic
+  player-client switching or similar tricks to get around the check — the user's own login (or waiting) is the way.
+  Keep test runs against YouTube small.
+- Login = `login.cjs`: one-time import of the user's browser cookies with
+  `yt-dlp --cookies-from-browser <b> --cookies tmp.txt file:///…` (file:// is disabled → nothing is downloaded, the
+  jar is written on exit), filtered to youtube.com / twitch.tv into `%APPDATA%\Vodslice\cookies.txt`
+  (`download.cookiesFile`). Chromium browsers (Brave/Chrome/Edge) lock the database while running → the dialog
+  waits until the browser is closed (tasklist) and imports by itself. Encrypted cookies → cookies.txt via the
+  "Get cookies.txt LOCALLY" extension. Live `cookiesFromBrowser` errors map to `LOGIN:` → same dialog.
+  Never read the user's real browser cookies in tests.
 - yt-dlp runs with `PYTHONIOENCODING=utf-8` (otherwise its messages arrive garbled, e.g. "you�re").
 
 **Preview**
