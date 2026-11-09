@@ -29,7 +29,19 @@ const DEFAULTS = {
     includeAudio: true,
   },
   gameplay: {
-    crop: 'full',              // 'full' | '9x16'
+    crop: 'full',              // 'full' | 'crop'
+    aspect: '9:16',            // crop window: '9:16' | '1:1' | '4:3' | '16:9'
+  },
+  topaz: {
+    enabled: false,            // enhance the facecam with Topaz Video AI after download
+    preset: 'face2x',
+    keepOriginal: true,        // keep Facecam.mp4 next to "Facecam Enhanced.mp4"
+    suffix: 'Enhanced',
+    presets: [
+      { id: 'face2x', name: 'Face 2× · Iris', model: 'iris-3', scale: 2, auto: true, preblur: 0, noise: 0, details: 0, halo: 0, blur: 0, compression: 0, blend: 0.2, grain: 0, qp: 16 },
+      { id: 'face4x', name: 'Face 4× · Iris', model: 'iris-3', scale: 4, auto: true, preblur: 0, noise: 0, details: 0, halo: 0, blur: 0, compression: 0, blend: 0.2, grain: 0, qp: 16 },
+      { id: 'detail2x', name: 'Detail 2× · Proteus', model: 'prob-4', scale: 2, auto: true, preblur: 0, noise: 0, details: 0, halo: 0, blur: 0, compression: 0, blend: 0, grain: 0, qp: 16 },
+    ],
   },
   download: {
     connections: 16,
@@ -38,6 +50,8 @@ const DEFAULTS = {
     cookiesFile: '',
   },
   ui: {
+    volume: 0.8,               // preview volume 0..1
+    muted: false,
     dragInvert: false,         // time picker: false = drag up increases
     dragSensitivity: 7,        // px per step
     openFolderWhenDone: false,
@@ -50,6 +64,32 @@ const DEFAULTS = {
     autoUpdate: true,
     lastCheck: 0,
   },
+  premiere: {
+    enabled: false,            // build the Premiere sequence automatically after each download
+    format: '3:4',             // '3:4' = 1440×1920 | '9:16' = 1440×2560
+    split: 1 / 3,              // facecam share of the height
+    open: 'premiere',          // after building: 'premiere' = open it in Premiere | 'folder' | 'none'
+    calibration: null,         // optional {kx, ky} if Premiere maps positions differently
+    captions: {
+      enabled: true,
+      overlay: true,           // animated captions as transparent video on V3
+      language: 'de',          // 'de' | 'en' | 'auto'
+      model: 'large-v3-turbo',
+      maxWords: 3,
+      maxChars: 18,
+      maxDur: 1.5,
+      pause: 0.3,
+      offsetMs: 0,             // shift all captions (negative = earlier)
+      font: 'Arial Black',
+      size: 84,
+      color: '#ffffff',
+      highlight: '#ffd23f',
+      outline: 7,
+      uppercase: true,
+      posY: null,              // null = on the facecam/gameplay line
+    },
+  },
+  premiereLayouts: {},         // channelKey -> {gameplayRect} for the vertical layout
   facecamPresets: {},          // channelKey -> {x,y,w,h} normalized
   cropPresets: {},             // channelKey -> {x} normalized (9:16 crop position)
 };

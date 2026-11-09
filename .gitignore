@@ -4,3 +4,4 @@ release/
 public/mediapipe/
 .vodslice-tmp/
 *.log
+.devdata/

@@ -169,7 +169,9 @@ function slim(cacheId, info, prefs, srcUrl) {
   const extractor = (info.extractor_key || info.extractor || '').toLowerCase();
   const site = extractor.includes('twitch') ? 'twitch' : extractor.includes('youtube') ? 'youtube' : extractor;
   const channel = info.channel || info.uploader || info.uploader_id || 'Unknown';
-  const channelKey = `${site}:${(info.channel_id || info.uploader_id || channel).toString().toLowerCase()}`;
+  // Twitch: VODs and clips report different ids (login vs numeric), the display name matches both.
+  const keyPart = site === 'twitch' ? info.channel || info.uploader || info.uploader_id : info.channel_id || info.uploader_id || channel;
+  const channelKey = `${site}:${String(keyPart || channel).toLowerCase()}`;
   const clean = (t) => String(t || '').replace(/[​-‏⁠﻿]/g, '').trim();
   let title = clean(info.title) || clean(info.fulltitle) || clean(info.description).split('\n')[0].slice(0, 80);
   if (!title) {
@@ -190,6 +192,8 @@ function slim(cacheId, info, prefs, srcUrl) {
     // Twitch VODs of a stream that is still running are fine (growing playlist); channel live URLs are not.
     isLive: (info.is_live || info.live_status === 'is_live') && !/vod|video/i.test(info.extractor_key || ''),
     growing: !!(info.is_live && /vod/i.test(info.extractor_key || '')),
+    // short media (Twitch clips, shorts) get appended to the clip list instead of replacing the workspace
+    kind: /clip/i.test(info.extractor_key || '') || (info.duration && info.duration <= 180) ? 'clip' : 'vod',
     uploadDate: info.upload_date || info.release_date || null,
     thumbnail: thumb,
     width: info.width || (qualities[0] && qualities[0].width) || 1920,
@@ -203,6 +207,23 @@ function slim(cacheId, info, prefs, srcUrl) {
     startHint: parseStartHint(srcUrl),
     userAgent: (info.http_headers || {})['User-Agent'] || null,
   };
+}
+
+/**
+ * Twitch clips (and some other sites) report no codecs at all: treat such formats as muxed H.264/AAC.
+ * Twitch's auto-cropped "portrait-*" clip variants are dropped.
+ */
+function normalize(info) {
+  if (!Array.isArray(info.formats)) return info;
+  info.formats = info.formats.filter((f) => !/^portrait/i.test(f.format_id || ''));
+  for (const f of info.formats) {
+    const unknown = (f.vcodec == null || f.vcodec === '') && (f.acodec == null || f.acodec === '');
+    if (unknown && f.height && f.resolution !== 'audio only' && f.ext !== 'mhtml') {
+      f.vcodec = 'avc1';
+      f.acodec = 'mp4a';
+    }
+  }
+  return info;
 }
 
 function runJson(tools, url, signal) {
@@ -220,7 +241,7 @@ function runJson(tools, url, signal) {
         return reject(new Error(line.replace(/^ERROR:\s*/, '')));
       }
       try {
-        resolve(JSON.parse(Buffer.concat(out).toString('utf8')));
+        resolve(normalize(JSON.parse(Buffer.concat(out).toString('utf8'))));
       } catch (e) {
         reject(new Error('Could not parse yt-dlp output'));
       }

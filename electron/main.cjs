@@ -8,12 +8,19 @@ const { Engine } = require('./engine.cjs');
 const probe = require('./probe.cjs');
 const frames = require('./frames.cjs');
 const naming = require('./naming.cjs');
+const topaz = require('./topaz.cjs');
+const updater = require('./updater.cjs');
+const { Whisper } = require('./whisper.cjs');
+const { PremiereExporter } = require('./premiereExport.cjs');
+const { importIntoPremiere } = require('./premiereOpen.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
-const ICON = path.join(DIST, 'icon.png');
+const ICON = path.join(DIST, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
+const ICON_PNG = path.join(DIST, 'icon.png');
 const BG = '#0b0c0f';
 
-app.setAppUserModelId('app.vodslice');
+// Dev runs use their own taskbar identity so Windows never caches the Electron icon for the real app.
+app.setAppUserModelId(app.isPackaged ? 'app.vodslice' : 'app.vodslice.dev');
 // Look like a regular Chrome to CDNs (googlevideo / ttvnw).
 app.userAgentFallback = app.userAgentFallback.replace(/\s?(Electron|vodslice)\/\S+/gi, '');
 
@@ -35,6 +42,8 @@ protocol.registerSchemesAsPrivileged([
 let store;
 let tools;
 let engine;
+let whisper;
+let exporter;
 let main = null;
 let mini = null;
 let miniAuto = false;
@@ -217,7 +226,7 @@ function notifyDone(job) {
     const n = new Notification({
       title: 'Download finished',
       body: `${out.map((o) => o.name).join(', ')} â€” ${job.title}`.slice(0, 200),
-      icon: ICON,
+      icon: ICON_PNG,
       silent: false,
     });
     n.on('click', () => firstDir && shell.openPath(firstDir));
@@ -290,7 +299,7 @@ function registerIpc() {
   ipcMain.on('drag:start', (e, files) => {
     const list = (files || []).filter((f) => fs.existsSync(f));
     if (!list.length) return;
-    const icon = nativeImage.createFromPath(ICON).resize({ width: 48, height: 48 });
+    const icon = nativeImage.createFromPath(ICON_PNG).resize({ width: 48, height: 48 });
     e.sender.startDrag({ file: list[0], files: list, icon });
   });
   ipcMain.handle('clipboard:read', () => clipboard.readText());
@@ -318,6 +327,56 @@ function registerIpc() {
       main.show();
       main.focus();
     }
+  });
+  // ---- Premiere export ----
+  ipcMain.handle('premiere:build', async (e, o) => {
+    const send = (label, p) => broadcast('premiere:progress', { dir: o.dir, label, p });
+    try {
+      const proj = await exporter.build(o.dir, { name: o.name, prefix: o.prefix || '', gameplayRect: o.gameplayRect || null, reuseTranscript: o.reuse !== false, onStage: send });
+      send('Ready', 1);
+      return { ok: true, project: proj };
+    } catch (err) {
+      send('Failed', 1);
+      return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle('premiere:open', async (_e, xml) => {
+    clipboard.writeText(xml);
+    return importIntoPremiere(xml);
+  });
+  ipcMain.handle('premiere:words', (_e, file) => {
+    try {
+      return JSON.parse(fs.readFileSync(file, 'utf8'));
+    } catch {
+      return null;
+    }
+  });
+  ipcMain.handle('premiere:saveWords', (_e, file, words) => {
+    const prev = (() => {
+      try {
+        return JSON.parse(fs.readFileSync(file, 'utf8'));
+      } catch {
+        return {};
+      }
+    })();
+    fs.writeFileSync(file, JSON.stringify({ ...prev, words, editedAt: Date.now() }, null, 1));
+    return true;
+  });
+  ipcMain.handle('whisper:status', async () => {
+    await whisper.hasNvidia();
+    return whisper.status();
+  });
+  ipcMain.handle('update:status', () => updater.status());
+  ipcMain.handle('update:check', () => updater.check());
+  ipcMain.handle('update:download', () => updater.download());
+  ipcMain.handle('update:install', () => {
+    app.isQuitting = true;
+    updater.install();
+  });
+  ipcMain.handle('topaz:status', async (_e, force) => {
+    const t = await topaz.detect(!!force);
+    engine.topaz = t.found ? { ffmpeg: t.ffmpeg, modelDir: t.modelDir } : null;
+    return t;
   });
   ipcMain.handle('app:info', () => ({ version: app.getVersion(), userData: app.getPath('userData'), defaultBaseDir: defaultBaseDir() }));
 }
@@ -361,9 +420,13 @@ app.whenReady().then(async () => {
   if (!store.get().output.baseDir) store.patch({ output: { baseDir: defaultBaseDir() } });
   tools = new Tools(path.join(userData, 'bin'), store);
   engine = new Engine({ tools, store });
+  whisper = new Whisper(tools);
+  exporter = new PremiereExporter({ tools, store, whisper });
+  engine.premiere = exporter;
   engine.on('job', (j) => broadcast('job', j));
   engine.on('removed', (id) => broadcast('job:removed', id));
   engine.on('done', notifyDone);
+  topaz.detect().then((t) => (engine.topaz = t.found ? { ffmpeg: t.ffmpeg, modelDir: t.modelDir } : null));
   store.onChange((d) => broadcast('settings', d));
 
   protocol.handle('app', (req) => {
@@ -424,6 +487,7 @@ app.whenReady().then(async () => {
   registerIpc();
   createMain();
   bootTools();
+  updater.init(broadcast);
 });
 
 app.on('second-instance', () => {

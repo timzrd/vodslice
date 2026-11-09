@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, Seg, Toggle, Spinner, Kbd } from './ui.jsx';
+import TopazSettings from './TopazSettings.jsx';
+import PremiereSettings from './PremiereSettings.jsx';
 
 function Row({ label, hint, children, wide }) {
   return (
@@ -13,9 +15,9 @@ function Row({ label, hint, children, wide }) {
   );
 }
 
-function Section({ title, icon, children }) {
+function Section({ title, icon, children, id }) {
   return (
-    <section className="ssec">
+    <section className="ssec" id={id ? `sec-${id}` : undefined}>
       <h3>
         <Icon name={icon} size={15} /> {title}
       </h3>
@@ -27,12 +29,17 @@ function Section({ title, icon, children }) {
 export const SHORTCUTS = [
   ['Ctrl+V', 'Paste link (anywhere)'],
   ['Space', 'Play / pause'],
-  ['J / L', 'Back / forward 10 s'],
+  ['J', 'Back 10 s'],
+  ['L / K', 'Play faster (Premiere-style) / stop'],
+  ['Shift+. / Shift+,', 'Speed up / down'],
   ['← / →', 'Back / forward 5 s (Shift: 1 s)'],
+  ['↑ / ↓', 'Volume up / down (5 % steps)'],
+  ['M', 'Mute / unmute'],
   ['I / O', 'Set start / end of selected segment to playhead'],
   ['N', 'New clip at playhead'],
   ['Shift+N', 'Add segment to selected clip'],
   ['Del', 'Remove selected segment'],
+  ['Ctrl+Z / Ctrl+Y', 'Undo / redo clip edits'],
   ['F', 'Facecam on / off'],
   ['D', 'Auto-detect facecam'],
   ['Ctrl+Enter', 'Download'],
@@ -40,8 +47,17 @@ export const SHORTCUTS = [
   ['Ctrl+,', 'Settings'],
 ];
 
-export default function Settings({ settings, onClose, tools }) {
+export default function Settings({ settings, onClose, tools, topaz: topazInit, section }) {
   const s = settings;
+  const [topaz, setTopaz] = useState(topazInit);
+  useEffect(() => {
+    if (!section) return;
+    const t = setTimeout(() => {
+      const el = document.getElementById(`sec-${section}`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [section]);
   const set = (patch) => window.api.setSettings(patch);
   const [busy, setBusy] = useState(false);
   const [log, setLog] = useState(null);
@@ -307,6 +323,14 @@ export default function Settings({ settings, onClose, tools }) {
             <Row label="Mini overlay on minimize" hint="Shows the progress overlay when you minimize during a download.">
               <Toggle checked={s.ui.miniAutoShow} onChange={(c) => set({ ui: { miniAutoShow: c } })} />
             </Row>
+          </Section>
+
+          <Section title="Premiere" icon="film" id="premiere">
+            <PremiereSettings settings={s} />
+          </Section>
+
+          <Section title="Topaz Video AI" icon="sparkles" id="topaz">
+            <TopazSettings settings={s} topaz={topaz} onRescan={() => window.api.topazStatus(true).then(setTopaz)} />
           </Section>
 
           <Section title="Tools" icon="refresh">

@@ -99,10 +99,36 @@ function png(size, px) {
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw, { level: 9 })), chunk('IEND', Buffer.alloc(0))]);
 }
 
+// Windows .ico with PNG entries (crisp at every taskbar / explorer size)
+function ico(sizes) {
+  const imgs = sizes.map((s) => png(s, render(s)));
+  const head = Buffer.alloc(6 + 16 * sizes.length);
+  head.writeUInt16LE(0, 0);
+  head.writeUInt16LE(1, 2);
+  head.writeUInt16LE(sizes.length, 4);
+  let off = head.length;
+  sizes.forEach((s, i) => {
+    const e = 6 + i * 16;
+    head[e] = s >= 256 ? 0 : s;
+    head[e + 1] = s >= 256 ? 0 : s;
+    head[e + 2] = 0;
+    head[e + 3] = 0;
+    head.writeUInt16LE(1, e + 4);
+    head.writeUInt16LE(32, e + 6);
+    head.writeUInt32LE(imgs[i].length, e + 8);
+    head.writeUInt32LE(off, e + 12);
+    off += imgs[i].length;
+  });
+  return Buffer.concat([head, ...imgs]);
+}
+
 const root = path.join(__dirname, '..');
 const img = png(S, render(S));
 fs.mkdirSync(path.join(root, 'build'), { recursive: true });
 fs.mkdirSync(path.join(root, 'public'), { recursive: true });
 fs.writeFileSync(path.join(root, 'build', 'icon.png'), img);
 fs.writeFileSync(path.join(root, 'public', 'icon.png'), png(256, render(256)));
+const icoBuf = ico([16, 20, 24, 32, 40, 48, 64, 128, 256]);
+fs.writeFileSync(path.join(root, 'build', 'icon.ico'), icoBuf);
+fs.writeFileSync(path.join(root, 'public', 'icon.ico'), icoBuf);
 console.log('icon written');

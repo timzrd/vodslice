@@ -1,5 +1,54 @@
+import { useEffect, useState } from 'react';
 import { Icon, Spinner } from './ui.jsx';
 import { fmtBytes, fmtEta } from '../lib/time.js';
+
+const OPEN_MSG = {
+  OK: ['Imported into Premiere — the sequence is in your project panel', 'ok'],
+  NO_PROJECT: ['Open a project in Premiere first, then click again (path is copied: Ctrl+I → Ctrl+V)', 'warn'],
+  NOT_RUNNING: ['Starting Premiere — open your project, then click again', 'warn'],
+  NOT_INSTALLED: ['Premiere Pro not found — the XML path is copied to the clipboard', 'warn'],
+};
+
+/** Build (if needed) and import every output of a job into Premiere. */
+export function PremiereButton({ job, notify, compact }) {
+  const [busy, setBusy] = useState(null);
+  const outs = (job.outputs || []).filter((o) => o.dir);
+  useEffect(() => {
+    if (!busy) return;
+    return window.api.onPremiere((e) => outs.some((o) => o.dir === e.dir) && setBusy({ label: e.label, p: e.p }));
+  }, [!!busy]); // eslint-disable-line
+  const ready = outs.length && outs.every((o) => o.premiere && o.premiere.xml);
+  const go = async () => {
+    if (busy) return;
+    for (const o of outs) {
+      let xml = o.premiere && o.premiere.xml;
+      if (!xml) {
+        setBusy({ label: 'Preparing', p: 0 });
+        const r = await window.api.premiereBuild({ dir: o.dir, name: o.name, prefix: o.prefix || '' });
+        if (!r.ok) {
+          setBusy(null);
+          return notify && notify(`Premiere: ${r.error}`, 'err', 8000);
+        }
+        xml = r.project.files.xml;
+        o.premiere = { ...(o.premiere || {}), xml, words: r.project.files.words, dir: o.dir };
+      }
+      setBusy({ label: 'Opening in Premiere', p: 1 });
+      const res = await window.api.premiereOpen(xml);
+      const [msg, tone] = OPEN_MSG[res.code] || ['Could not reach Premiere — path copied: Ctrl+I → Ctrl+V → Enter', 'warn'];
+      notify && notify(msg, tone, tone === 'ok' ? 3500 : 7000);
+      if (!res.ok) break;
+      await new Promise((r) => setTimeout(r, 900));
+    }
+    setBusy(null);
+  };
+  if (!outs.length) return null;
+  return (
+    <button className={`pr-btn ${ready ? 'ready' : ''} ${compact ? 'compact' : ''}`} onClick={go} disabled={!!busy} title={ready ? 'Import the vertical sequence into the open Premiere project' : 'Create captions + vertical sequence, then import into Premiere'}>
+      {busy ? <Spinner size={12} /> : <span className="pr-logo">Pr</span>}
+      {!compact && <span>{busy ? `${busy.label}${busy.p > 0 && busy.p < 1 ? ` ${Math.round(busy.p * 100)}%` : ''}` : 'Open in Premiere'}</span>}
+    </button>
+  );
+}
 
 export const ACTIVE = ['queued', 'preparing', 'downloading', 'processing'];
 
@@ -7,7 +56,7 @@ export function jobFiles(job) {
   return (job.outputs || []).flatMap((o) => o.files || []);
 }
 
-export function JobRow({ job, compact }) {
+export function JobRow({ job, compact, notify, onCaptions }) {
   const active = ACTIVE.includes(job.status);
   const pct = Math.round((job.progress || 0) * 100);
   const files = jobFiles(job);
@@ -15,7 +64,7 @@ export function JobRow({ job, compact }) {
   const names = (job.names || []).length > 2 ? `${job.names[0]} – ${job.names.at(-1)}` : (job.names || []).join(', ');
   const meta =
     job.status === 'done'
-      ? `Done · ${files.length} file${files.length === 1 ? '' : 's'}`
+      ? `Done · ${files.length} file${files.length === 1 ? '' : 's'}${job.warning ? ` · ${job.warning}` : ''}`
       : job.status === 'error'
         ? job.error || 'Failed'
         : job.status === 'canceled'
@@ -48,9 +97,34 @@ export function JobRow({ job, compact }) {
       <div className="job-actions">
         {job.status === 'done' && (
           <>
-            <span className="drag-out" draggable onDragStart={dragStart} title="Drag the files straight into your editor">
+            <PremiereButton job={job} notify={notify} compact={compact} />
+            {!compact && onCaptions && (job.outputs || []).some((o) => o.premiere && o.premiere.words) && (
+              <button className="icon-btn sm" title="Edit captions" onClick={() => onCaptions(job)}>
+                <Icon name="edit" size={14} />
+              </button>
+            )}
+            {!compact &&
+              files.map((f) => {
+                const name = f.split(/[\\/]/).pop().replace(/\.mp4$/i, '');
+                return (
+                  <span
+                    key={f}
+                    className="file-chip"
+                    draggable
+                    title={`Drag ${name} into your editor`}
+                    onDragStart={(e) => {
+                      e.preventDefault();
+                      window.api.startDrag([f]);
+                    }}
+                  >
+                    <Icon name={/facecam/i.test(name) ? (/enhanced/i.test(name) ? 'sparkles' : 'user') : 'film'} size={11} />
+                    {name.replace(/^.* - /, '')}
+                  </span>
+                );
+              })}
+            <span className="drag-out" draggable onDragStart={dragStart} title="Drag all files into your editor">
               <Icon name="grip" size={14} />
-              {!compact && <span>Drag</span>}
+              {!compact && <span>All</span>}
             </span>
             <button className="icon-btn sm" title="Open folder" onClick={() => window.api.openPath(dir)}>
               <Icon name="folder" size={15} />
@@ -65,7 +139,7 @@ export function JobRow({ job, compact }) {
   );
 }
 
-export default function Jobs({ jobs, open, onToggle }) {
+export default function Jobs({ jobs, open, onToggle, notify, onCaptions }) {
   if (!jobs.length) return null;
   const active = jobs.filter((j) => ACTIVE.includes(j.status));
   const avg = active.length ? active.reduce((a, j) => a + (j.progress || 0), 0) / active.length : 1;
@@ -99,7 +173,7 @@ export default function Jobs({ jobs, open, onToggle }) {
       {open && (
         <div className="jobs-list">
           {[...jobs].reverse().map((j) => (
-            <JobRow key={j.id} job={j} />
+            <JobRow key={j.id} job={j} notify={notify} onCaptions={onCaptions} />
           ))}
         </div>
       )}

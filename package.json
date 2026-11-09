@@ -1,7 +1,7 @@
 {
   "name": "vodslice",
   "productName": "Vodslice",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fast YouTube & Twitch VOD clipper with facecam extraction",
   "main": "electron/main.cjs",
   "author": "Tim",
@@ -11,7 +11,8 @@
     "build": "vite build",
     "start": "vite build && electron .",
     "electron": "electron .",
-    "dist": "vite build && electron-builder --win nsis"
+    "dist": "vite build && electron-builder --win nsis",
+    "release": "node scripts/release.cjs"
   },
   "build": {
     "appId": "app.vodslice",
@@ -26,15 +27,24 @@
     ],
     "win": {
       "target": "nsis",
-      "icon": "build/icon.png"
+      "icon": "build/icon.ico"
     },
     "nsis": {
       "oneClick": true,
       "perMachine": false,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Vodslice"
-    }
+      "shortcutName": "Vodslice",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "timzrd",
+        "repo": "vodslice",
+        "releaseType": "release"
+      }
+    ]
   },
   "devDependencies": {
     "@mediapipe/tasks-vision": "^1.2.2",
@@ -45,5 +55,12 @@
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "electron-updater": "^6.8.11"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/timzrd/vodslice.git"
   }
 }

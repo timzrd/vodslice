@@ -11,6 +11,7 @@ const P = {
   folder: 'M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z',
   scissors: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20M8.1 8.1 12 12',
   user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM4 21a8 8 0 0 1 16 0',
+  userPlus: 'M10 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM3 21a7 7 0 0 1 11.5-5.4M19 14v6M16 17h6',
   sparkles: 'M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9ZM19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9ZM5 3l.6 1.4L7 5l-1.4.6L5 7l-.6-1.4L3 5l1.4-.6Z',
   download: 'M12 4v11M7 10l5 5 5-5M5 20h14',
   chevronDown: 'M6 9l6 6 6-6',
@@ -32,6 +33,7 @@ const P = {
   external: 'M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5',
   refresh: 'M20 11a8 8 0 0 0-14.8-3.8L3 9.5M3 4v5.5h5.5M4 13a8 8 0 0 0 14.8 3.8L21 14.5M21 20v-5.5h-5.5',
   volume: 'M11 5 6 9H3v6h3l5 4ZM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13',
+  volumeLow: 'M11 5 6 9H3v6h3l5 4ZM15.5 8.5a5 5 0 0 1 0 7',
   mute: 'M11 5 6 9H3v6h3l5 4ZM22 9l-6 6M16 9l6 6',
   keyboard: 'M3 6h18v12H3zM7 10h.01M11 10h.01M15 10h.01M7 14h10',
   film: 'M4 4h16v16H4zM8 4v16M16 4v16M4 8h4M4 12h4M4 16h4M16 8h4M16 12h4M16 16h4',
@@ -122,6 +124,29 @@ export function Popover({ trigger, children, align = 'left', open: openProp, onO
       {trigger({ open, toggle: () => setOpen(!open) })}
       {open && <div className={`pop pop-${align} ${up ? 'pop-up' : ''}`}>{typeof children === 'function' ? children({ close: () => setOpen(false) }) : children}</div>}
     </div>
+  );
+}
+
+/** Chip with a toggle part and a caret that opens options. */
+export function SplitChip({ on, icon, label, title, onToggle, busy, children }) {
+  return (
+    <Popover
+      up
+      align="right"
+      trigger={({ toggle, open }) => (
+        <div className={`split-chip ${on ? 'on' : ''} ${open ? 'open' : ''}`}>
+          <button className="sc-main" onClick={onToggle} title={title}>
+            {busy ? <Spinner size={12} /> : <Icon name={icon} size={13} />}
+            <span>{label}</span>
+          </button>
+          <button className="sc-caret" onClick={toggle} title="Options">
+            <Icon name="chevronDown" size={12} />
+          </button>
+        </div>
+      )}
+    >
+      {children}
+    </Popover>
   );
 }
 

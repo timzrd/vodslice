@@ -25,7 +25,7 @@ function attach(el, src, hlsList) {
   }
 }
 
-const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, onCropX, editBoxes, aspectLock, onTime, onPlayState }, ref) {
+const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, onCropRect, editBoxes, aspectLock, onTime, onPlayState, volume = 1, muted = false, rate = 1, initialTime, children }, ref) {
   const wrap = useRef(null);
   const video = useRef(null);
   const audio = useRef(null);
@@ -82,12 +82,27 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
           else setErr('Preview failed to load');
         }
       });
-    if (info.startHint) v.currentTime = info.startHint;
+    const t0 = initialTime != null ? initialTime : info.startHint;
+    if (t0) v.currentTime = t0;
     return () => {
       hlsList.current.forEach((h) => h.destroy());
       hlsList.current = [];
     };
   }, [info && info.cacheId]); // eslint-disable-line
+
+  // Volume: squared curve so the lower steps are actually usable; applied to video and separate audio.
+  useEffect(() => {
+    const gain = Math.max(0, Math.min(1, volume)) ** 2;
+    for (const el of [video.current, audio.current]) {
+      if (!el) continue;
+      el.volume = gain;
+      el.muted = muted;
+    }
+  }, [volume, muted, info && info.cacheId]);
+
+  useEffect(() => {
+    for (const el of [video.current, audio.current]) if (el) el.playbackRate = rate;
+  }, [rate, info && info.cacheId]);
 
   // Keep separate audio in sync, report time smoothly
   useEffect(() => {
@@ -195,16 +210,8 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
     get paused() {
       return video.current ? video.current.paused : true;
     },
-    setMuted(m) {
-      if (video.current) video.current.muted = m;
-    },
-    get muted() {
-      return video.current ? video.current.muted : false;
-    },
   }));
 
-  const cropW = crop && crop.enabled ? (9 / 16) / aspect : 0;
-  const cropX = crop && crop.enabled ? (typeof crop.x === 'number' ? crop.x : (1 - cropW) / 2) : 0;
 
   return (
     <div className="player" ref={wrap}>
@@ -223,8 +230,18 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
           }}
         />
         <audio ref={audio} preload="auto" />
-        {crop && crop.enabled && (
-          <CropOverlay x={cropX} w={cropW} stageW={size.w} onChange={onCropX} />
+        {crop && crop.enabled && crop.rect && (
+          <BoxEditor
+            rect={crop.rect}
+            stage={size}
+            onChange={onCropRect}
+            label={crop.premiere ? 'GAMEPLAY · PREMIERE' : `CROP ${crop.label || ''}`}
+            srcW={info ? info.width : 1920}
+            srcH={info ? info.height : 1080}
+            aspectLock={crop.aspect}
+            tone="crop"
+            magnet
+          />
         )}
         {facecam && facecam.enabled && facecam.rect && (
           <BoxEditor
@@ -237,6 +254,7 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
             editable={editBoxes}
             aspectLock={aspectLock}
             tone={facecam.confidence === 'low' ? 'warn' : 'accent'}
+            shade={!(crop && crop.enabled)}
           />
         )}
         {(buffering || (!ready && info && info.preview)) && !err && (
@@ -245,36 +263,10 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
           </div>
         )}
         {err && <div className="stage-badge warn">{err}</div>}
+        {children}
       </div>
     </div>
   );
 });
-
-function CropOverlay({ x, w, stageW, onChange }) {
-  const st = useRef(null);
-  const down = (e) => {
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture(e.pointerId);
-    st.current = { x0: e.clientX, start: x };
-  };
-  const move = (e) => {
-    if (!st.current) return;
-    const nx = Math.max(0, Math.min(1 - w, st.current.start + (e.clientX - st.current.x0) / stageW));
-    onChange(nx, false);
-  };
-  const up = () => {
-    if (st.current) onChange(x, true);
-    st.current = null;
-  };
-  return (
-    <div className="crop-overlay">
-      <div className="crop-shade" style={{ left: 0, width: `${x * 100}%` }} />
-      <div className="crop-shade" style={{ left: `${(x + w) * 100}%`, right: 0 }} />
-      <div className="crop-box" style={{ left: `${x * 100}%`, width: `${w * 100}%` }} onPointerDown={down} onPointerMove={move} onPointerUp={up}>
-        <span className="box-label">9:16 GAMEPLAY</span>
-      </div>
-    </div>
-  );
-}
 
 export default Player;
