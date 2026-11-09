@@ -1,0 +1,67 @@
+name: Build & release
+
+# Push a tag "vX.Y.Z" (matching package.json "version") -> Windows installer is built and published as a
+# GitHub release. Installed apps pick it up via electron-updater (latest.yml).
+# "Run workflow" by hand builds the installer as an artifact only (publish = false) to check the build.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Create a GitHub release (needs a vX.Y.Z tag on this commit)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install
+        run: |
+          npm ci
+          node node_modules/electron/install.js
+
+      - name: Check version matches tag
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          v=$(node -p "require('./package.json').version")
+          if [ "v$v" != "${GITHUB_REF_NAME}" ]; then echo "package.json is $v but tag is ${GITHUB_REF_NAME}"; exit 1; fi
+
+      - name: Self-test
+        run: npm test
+
+      - name: Build installer
+        run: |
+          npx vite build
+          npx electron-builder --win nsis --publish never
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vodslice-installer
+          path: |
+            release/Vodslice-Setup-*.exe
+            release/Vodslice-Setup-*.exe.blockmap
+            release/latest.yml
+
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.publish
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          v=$(node -p "require('./package.json').version")
+          gh release create "v$v" --title "Vodslice $v" --generate-notes \
+            "release/Vodslice-Setup-$v.exe" "release/Vodslice-Setup-$v.exe.blockmap" "release/latest.yml"

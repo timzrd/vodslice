@@ -2,6 +2,26 @@
 
 Read this first. It is the complete context of how and why Vodslice was built (the original chat is gone).
 
+## You are probably in a cloud session (Linux) — read this
+Tim pairs new chats with this GitHub repo, not with his PC. So:
+- **You can:** read/edit all code, `npm ci`, `npm test` (pure-module self-test, no binaries/network),
+  `npx vite build` (renderer compiles), `node --check electron/*.cjs`, commit, push, tag releases.
+- **You can't:** run the Electron GUI against his setup, use his GPU, Premiere, Topaz, or `%APPDATA%\Vodslice`.
+  `electron/tools.cjs` downloads **Windows** binaries (yt-dlp.exe, ffmpeg win64, deno, whisper.cpp) — the
+  headless harnesses in `scripts/dev/` therefore only run on Windows. Don't claim something works in the app
+  unless `npm test` covers it or Tim confirmed it; tell him exactly what to try.
+- **Shipping to Tim = a GitHub release.** His installed app updates itself from this repo's releases:
+  ```bash
+  npm version patch -m "Release v%s"     # bumps package.json + package-lock, commits, tags vX.Y.Z
+  git push --follow-tags                 # tag push -> Actions builds the Windows installer and publishes it
+  ```
+  `.github/workflows/release.yml` (windows-latest): `npm ci` → `npm test` → `vite build` →
+  `electron-builder --win nsis` → `gh release create` with `Vodslice-Setup-x.y.z.exe`, `.blockmap`, `latest.yml`
+  (the tag must equal the package.json version). Manual "Run workflow" = build check only, installer as artifact.
+  After the run is green, Tim gets "Update x.y.z" in the title bar. Check runs with `gh run list` / `gh run view`.
+- Add a test to `scripts/dev/selftest.cjs` when you change captions, Premiere XML, alignment, HLS parsing,
+  probe/format logic or naming — it's the only automated safety net in the cloud and it gates every release.
+
 ## The user (Tim)
 - Makes **short-form videos**, mostly from **DrDonut**'s old Twitch/YouTube livestream VODs (Minecraft / Donut SMP,
   4–8 h long) plus Twitch clips of other streamers (e.g. Papaplatte). Edits in **Premiere Pro 2026**, upscales the
@@ -26,8 +46,10 @@ local **captions**. Installed per-user via NSIS; updates itself from GitHub rele
 npm install
 node node_modules/electron/install.js   # npm 12 skips install scripts -> Electron binary missing otherwise
 npm start                               # vite build + electron .
-npm run release [patch|minor|x.y.z] "notes"   # bump, build installer, commit, push, GitHub release (needs gh)
+npm test                                # self-test (any OS)
+npm run release [patch|minor|x.y.z] "notes"   # LOCAL Windows release: bump, build, commit, push, GitHub release
 ```
+(From the cloud use the tag flow above instead of `npm run release` — it needs Windows.)
 - electron-builder's NSIS step **fails on long paths** (the project once lived in a very deep folder). The release
   script therefore builds from a short copy: `%LOCALAPPDATA%\Temp\vsb2` (robocopy /MIR).
 - First electron-builder run on a machine may fail while downloading its tools — the script retries once.

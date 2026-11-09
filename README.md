@@ -93,7 +93,8 @@ version, builds the installer, commits, pushes and creates the release (needs `g
 npm install
 node node_modules/electron/install.js   # if npm skipped Electron's binary download
 npm start                               # build renderer + run
-npm run release                         # new version -> GitHub release (installed apps update)
+npm test                                # self-test of the pure modules (any OS)
+npm version patch && git push --follow-tags   # tag -> GitHub Actions builds + publishes the installer
 ```
 
 Test harnesses live in `scripts/dev/`. Architecture, decisions and gotchas: [`CLAUDE.md`](CLAUDE.md).

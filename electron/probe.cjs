@@ -273,4 +273,4 @@ function cached(cacheId) {
   return c ? c.info : null;
 }
 
-module.exports = { probe, fullInfo, cached, buildQualities, frameFormat, codecFamily, isHls, parseStartHint };
+module.exports = { probe, fullInfo, cached, buildQualities, frameFormat, codecFamily, isHls, parseStartHint, normalize };
