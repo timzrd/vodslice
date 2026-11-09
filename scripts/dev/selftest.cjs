@@ -133,6 +133,108 @@ test('hls: playlist parsing with init segment and byte ranges', () => {
   assert.deepEqual(selectSegments(pl, 7, 13).map((s) => s.t), [6, 12]);
 });
 
+test('premiere: any facecam ratio is cropped to the top area', () => {
+  const { buildXml } = req('premiere.cjs');
+  const g = { path: path.join(os.tmpdir(), 'g.mp4'), width: 1920, height: 1080, fps: 60, duration: 5, hasAudio: true };
+  const fc = { path: path.join(os.tmpdir(), 'f.mp4'), width: 640, height: 360 }; // 16:9 cam, top area is 1440×640 (9:4)
+  const xml = buildXml({ name: 'T', width: 1440, height: 1920, split: 1 / 3, gameplay: g, facecam: fc });
+  const crop = xml.match(/<effectid>crop<\/effectid>[\s\S]*?<\/effect>/);
+  assert.ok(crop, 'facecam gets a crop filter');
+  const v = (id) => Number(new RegExp(`<parameterid>${id}</parameterid><name>${id}</name><valuemin>0</valuemin><valuemax>100</valuemax><value>([\\d.]+)`).exec(crop[0])[1]);
+  // scaled to 1440 wide -> 810 high, 170 px too much -> 85 px (10.494 %) off top and bottom
+  assert.ok(Math.abs(v('top') - 10.494) < 0.01 && Math.abs(v('bottom') - 10.494) < 0.01);
+  assert.equal(v('left'), 0);
+});
+
+// ---------------- browse / links ----------------
+test('links: video, channel or name', () => {
+  const { parseInput } = req('links.cjs');
+  const k = (s) => parseInput(s);
+  assert.equal(k('DrDonut').kind, 'search');
+  assert.equal(k('papa platte').kind, 'search');
+  assert.deepEqual(k('https://www.youtube.com/@DrDonutt/streams'), { kind: 'channel', site: 'youtube', ref: '@DrDonutt', url: 'https://www.youtube.com/@DrDonutt' });
+  assert.equal(k('youtube.com/channel/UCPYZ-R5LQGMeU7QikgxmH8Q').ref, 'channel/UCPYZ-R5LQGMeU7QikgxmH8Q');
+  assert.equal(k('@DrDonutt').kind, 'channel');
+  assert.deepEqual(k('https://www.twitch.tv/Papaplatte'), { kind: 'channel', site: 'twitch', ref: 'papaplatte', url: 'https://www.twitch.tv/papaplatte' });
+  for (const v of ['https://www.youtube.com/watch?v=abc&t=10', 'https://youtu.be/abc', 'https://www.youtube.com/live/abc', 'https://www.twitch.tv/videos/123', 'https://www.twitch.tv/papaplatte/clip/Foo-bar', 'https://clips.twitch.tv/Foo'])
+    assert.equal(k(v).kind, 'video', v);
+  assert.equal(k('https://www.twitch.tv/directory').kind, 'none');
+});
+
+test('youtube: lockup items + channel header from page data', () => {
+  const yt = req('youtube.cjs');
+  const lockup = (id, title, dur, parts) => ({
+    richItemRenderer: {
+      content: {
+        lockupViewModel: {
+          contentId: id,
+          contentType: 'LOCKUP_CONTENT_TYPE_VIDEO',
+          contentImage: { thumbnailViewModel: { image: { sources: [{ url: `https://i.ytimg.com/vi/${id}/a.jpg`, width: 360 }, { url: `https://i.ytimg.com/vi/${id}/b.jpg`, width: 720 }] }, overlays: [{ thumbnailBottomOverlayViewModel: { badges: [{ thumbnailBadgeViewModel: { text: dur } }] } }] } },
+          metadata: { lockupMetadataViewModel: { title: { content: title }, metadata: { contentMetadataViewModel: { metadataRows: [{ metadataParts: parts.map((p) => ({ text: { content: p } })) }] } } } },
+        },
+      },
+    },
+  });
+  const grid = {
+    contents: [
+      lockup('a1', '​', '5:39:50', ['489K', 'Streamed 13h ago']),
+      lockup('a2', 'IM THE RICHEST', '4:17:20', ['521K', 'Streamed 3d ago']),
+      { continuationItemRenderer: { continuationEndpoint: { continuationCommand: { token: 'TOKEN' } } } },
+    ],
+  };
+  const items = yt.itemsOf(grid);
+  assert.equal(items.length, 2);
+  assert.deepEqual([items[0].title, items[0].duration, items[0].views, items[0].published], ['', 20390, '489K views', 'Streamed 13h ago']);
+  assert.equal(items[1].thumbnail, 'https://i.ytimg.com/vi/a2/b.jpg');
+  assert.equal(yt.parseDur('1:02:03'), 3723);
+  const data = {
+    metadata: { channelMetadataRenderer: { title: 'DrDonut', externalId: 'UC1', description: 'Daily live streamer\nmore' } },
+    header: { pageHeaderRenderer: { content: { pageHeaderViewModel: { metadata: { contentMetadataViewModel: { metadataRows: [{ metadataParts: [{ text: { content: '@DrDonutt' } }] }, { metadataParts: [{ text: { content: '2.92M subscribers' } }, { text: { content: '706 videos' } }] }] } } } } } },
+    contents: { tabs: [{ tabRenderer: { title: 'Videos', endpoint: { commandMetadata: { webCommandMetadata: { url: '/@DrDonutt/videos' } } } } }, { tabRenderer: { title: 'Live', selected: true, endpoint: { commandMetadata: { webCommandMetadata: { url: '/@DrDonutt/streams' } } } } }] },
+  };
+  const h = yt.headerOf(data, '@DrDonutt');
+  assert.deepEqual([h.name, h.handle, h.subscribers, h.videoCount, h.description], ['DrDonut', '@DrDonutt', '2.92M subscribers', '706 videos', 'Daily live streamer']);
+  assert.deepEqual(h.tabs, [{ id: 'videos', label: 'Videos' }, { id: 'streams', label: 'Streams' }]);
+});
+
+test('twitch: chat windows count emotes once per message, peaks get their emote', () => {
+  const tw = req('twitch.cjs');
+  const emoteMap = new Map([['KEKW', 'https://cdn/kekw']]);
+  const msg = (t, text, emoteId) => ({ node: { contentOffsetSeconds: t, message: { fragments: emoteId ? [{ text, emote: { emoteID: emoteId } }] : [{ text, emote: null }] } } });
+  const page = [msg(100, 'KEKW KEKW'), msg(101, 'KEKW'), msg(103, 'LUL', '425618'), msg(105, 'hello'), msg(125, 'later')];
+  const r = tw.countPage(page, false, 100, 20, emoteMap);
+  assert.equal(r.n, 4, 'only messages inside [100, 120)');
+  assert.equal(r.emotes.KEKW[0], 2, 'one vote per message');
+  assert.equal(r.emotes.LUL[1], 'https://static-cdn.jtvnw.net/emoticons/v2/425618/default/dark/2.0');
+  // page ended inside the window -> scaled up
+  const big = tw.countPage([msg(100, 'a'), msg(101, 'b'), msg(104, 'c')], true, 100, 20, emoteMap);
+  assert.ok(big.extrapolated && big.n === 12);
+  const counts = [2, 3, 2, 2, 40, 3, 2, 2, 2, 2, 2, 25, 2];
+  const win = counts.map(() => ({}));
+  win[4] = { KEKW: [30, 'https://cdn/kekw'] };
+  const peaks = tw.findPeaks(counts, win, 20);
+  assert.deepEqual(peaks.map((p) => p.t), [90, 230]);
+  assert.equal(peaks[0].emote.name, 'KEKW');
+  assert.equal(peaks[1].emote, null);
+});
+
+test('projects: summary has facecam box + clip marks of the main source', () => {
+  const { summary } = req('projects.cjs');
+  const s = summary({
+    id: 'p1',
+    updated: 5,
+    activeSrc: 'a',
+    sources: { a: { cacheId: 'a', title: 'Stream', channel: 'DrDonut', site: 'youtube', duration: 1000, thumbnail: 't.jpg' } },
+    srcState: { a: { fcKeys: [{ t: 0, rect: { x: 0, y: 0, w: 0.3, h: 0.3 } }] } },
+    clips: [{ src: 'a', segments: [{ start: 100, end: 200, color: '#fff' }] }],
+  });
+  assert.equal(s.name, 'Stream');
+  assert.equal(s.clips, 1);
+  assert.equal(s.clipsDuration, 100);
+  assert.deepEqual(s.marks, [{ s: 0.1, e: 0.2, c: '#fff' }]);
+  assert.equal(s.facecam.w, 0.3);
+});
+
 test('naming: template + sanitize', () => {
   const { render, sanitize } = req('naming.cjs');
   assert.equal(render('{channel} {n}', { channel: 'DrDonut', n: 70 }), 'DrDonut 70');

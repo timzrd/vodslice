@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, us
 import Hls from 'hls.js';
 import BoxEditor from './BoxEditor.jsx';
 import { Spinner } from './ui.jsx';
+import { sbStyle } from '../lib/storyboard.js';
 
 function attach(el, src, hlsList) {
   if (!el || !src) return;
@@ -25,7 +26,7 @@ function attach(el, src, hlsList) {
   }
 }
 
-const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, onCropRect, editBoxes, aspectLock, onTime, onPlayState, volume = 1, muted = false, rate = 1, initialTime, children }, ref) {
+const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, onCropRect, editBoxes, aspectLock, onTime, onPlayState, volume = 1, muted = false, rate = 1, initialTime, preview, poster, children, empty }, ref) {
   const wrap = useRef(null);
   const video = useRef(null);
   const audio = useRef(null);
@@ -88,7 +89,7 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
       hlsList.current.forEach((h) => h.destroy());
       hlsList.current = [];
     };
-  }, [info && info.cacheId]); // eslint-disable-line
+  }, [info && info.cacheId, info && info.preview && info.preview.url]); // eslint-disable-line
 
   // Volume: squared curve so the lower steps are actually usable; applied to video and separate audio.
   useEffect(() => {
@@ -210,13 +211,23 @@ const Player = forwardRef(function Player({ info, facecam, onFacecamRect, crop, 
     get paused() {
       return video.current ? video.current.paused : true;
     },
+    get el() {
+      return video.current;
+    },
+    get stageRect() {
+      const st = wrap.current && wrap.current.querySelector('.stage');
+      return st ? st.getBoundingClientRect() : null;
+    },
   }));
 
-
+  const posterSrc = poster || (info && info.thumbnail);
+  const pv = preview != null && info && info.storyboard ? sbStyle(info.storyboard, preview, size.w, size.h) : null;
   return (
     <div className="player" ref={wrap}>
       <div className="stage" style={{ width: size.w, height: size.h }}>
-        {info && info.thumbnail && !ready && <img className="poster" src={info.thumbnail} alt="" />}
+        {posterSrc && (!ready || !info) && <img className="poster" src={posterSrc} alt="" />}
+        {pv && <div className="scrub-preview" style={pv} />}
+        {empty}
         <video
           ref={video}
           className="video"

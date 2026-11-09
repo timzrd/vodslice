@@ -256,7 +256,15 @@ async function probe(tools, url, prefs) {
   CACHE.set(cacheId, { info, fetchedAt: Date.now(), url });
   const ua = (info.http_headers || {})['User-Agent'];
   if (ua) module.exports.lastUserAgent = ua;
-  return slim(cacheId, info, prefs, url);
+  const out = slim(cacheId, info, prefs, url);
+  // Twitch VODs: yt-dlp has no storyboards, Twitch's own seek previews feed the filmstrip + scrub preview
+  if (out.site === 'twitch' && out.kind === 'vod') out.twitchId = String(info.id || '').replace(/^v/, '');
+  if (out.twitchId && !out.storyboard) {
+    try {
+      out.storyboard = await Promise.race([require('./twitch.cjs').storyboard(out.twitchId), new Promise((r) => setTimeout(() => r(null), 5000))]);
+    } catch {}
+  }
+  return out;
 }
 
 /** Return full info, refreshing if the signed URLs might have expired. */

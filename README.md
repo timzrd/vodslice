@@ -14,6 +14,16 @@ updates itself from this repository's releases.
 
 ## Features
 
+- **Home / Browse / Edit** – projects are saved automatically (facecam box, clips, playhead) and listed on Home.
+  Type a streamer's name in the top bar, pick YouTube or Twitch, and browse a recreated channel page (banner,
+  subscribers, Videos/Streams or Past broadcasts/Highlights/Clips, endless grid). Click a stream and it flies
+  into the editor.
+- **Editor like an NLE** – media bin left, player, clips + export right, timeline with video thumbnails below.
+  Mouse wheel scrolls the timeline, Ctrl + wheel zooms at the cursor, dragging near an edge keeps scrolling.
+- **Pick what to download** – every clip has a checkbox; Download takes the checked ones, right-click a clip to
+  download just that one. Downloaded clips stay in the list (✓) and get unchecked.
+- **Chat highlights** – Twitch VODs get a chat-activity graph on the timeline with the most spammed emote at each
+  peak (KEKW, OMEGALUL, …; 7TV/BTTV/FFZ included) — click an emote to jump there. YouTube shows "most replayed".
 - **Only download what you need** – a parallel HLS downloader fetches just the segments of your time ranges
   (16 connections by default). A 2-minute 1080p60 part of an 8-hour VOD takes seconds.
 - **Clips & segments** – `+ New clip` = separate output (own folder), `+ Segment` = another range that gets
@@ -50,10 +60,11 @@ updates itself from this repository's releases.
 
 ## Premiere export
 
-After a download (toggle **Premiere** next to the download button) Vodslice builds `premiere/` in the clip folder:
-`<clip>.xml` (FCP7 XML → vertical 1440×1920 or 1440×2560 sequence: V1 gameplay filling the bottom, V2 facecam on
-top without audio, V3 animated captions with alpha, A1 gameplay audio, empty SFX/Music tracks), `<clip>.srt`,
-`<clip>.ass`, `<clip>_captions.mov` and `project.json`.
+After a download (toggle **Premiere sequence** in the export panel) Vodslice builds `premiere/` in the clip folder:
+`<clip>.xml` (FCP7 XML → vertical 1440×1920 sequence: V1 gameplay filling the bottom, V2 facecam on top without
+audio — any box ratio, cropped to fit —, V3 animated captions with alpha, A1 gameplay audio, empty SFX/Music
+tracks), `<clip>.srt`, `<clip>.ass`, `<clip>_captions.mov` and `project.json`. While the option is on, a live
+1440×1920 preview runs in the corner of the player.
 
 - **Open in Premiere** imports the XML into the open Premiere project (Premiere can't open XML from the command line,
   so Vodslice uses Premiere's Import dialog; the path is also on the clipboard).
@@ -73,15 +84,19 @@ version, builds the installer, commits, pushes and creates the release (needs `g
 
 | Key | Action |
 | --- | --- |
-| Ctrl+V | Paste link (anywhere) |
+| Ctrl+V | Paste a video or channel link (anywhere) |
+| Ctrl+K / Ctrl+F | Search a streamer |
 | Space / J | Play-pause / −10 s |
 | L / K | Play faster (Premiere-style shuttle) / stop |
 | Shift+. / Shift+, | Speed up / down |
 | ← / → | −5 s / +5 s (Shift: 1 s) |
 | ↑ / ↓ / M | Volume ±5 % / mute |
-| I / O | Set start / end of selected segment to playhead |
-| N / Shift+N | New clip / add segment to selected clip |
-| Del | Remove selected segment |
+| I / O | Selected clip: trim start / end · nothing selected: IN, then O creates the clip |
+| N / Shift+N | New clip / add part to selected clip |
+| S | Split the selected clip at the playhead |
+| Esc | Deselect |
+| Del | Delete selected clip (or part) |
+| Ctrl+A | Check / uncheck all clips |
 | Ctrl+Z / Ctrl+Y | Undo / redo clip edits |
 | F / D | Facecam on-off / auto-detect |
 | Ctrl+Enter | Download |

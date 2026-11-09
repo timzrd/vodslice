@@ -90,7 +90,7 @@ class PremiereExporter {
     const g = await this.probe(files.gameplay);
     if (!g || !g.width) throw new Error('Could not read the gameplay file');
     const fc = files.facecam ? await this.probe(files.facecam) : null;
-    const [W, H] = FORMATS[P.format] || FORMATS['3:4'];
+    const [W, H] = FORMATS['3:4']; // always 1440×1920: the facecam is cropped to the top area in Premiere
     const split = Math.min(0.6, Math.max(0.15, Number(P.split) || 1 / 3));
 
     // ---- transcript ----

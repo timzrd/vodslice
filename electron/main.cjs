@@ -13,6 +13,10 @@ const updater = require('./updater.cjs');
 const { Whisper } = require('./whisper.cjs');
 const { PremiereExporter } = require('./premiereExport.cjs');
 const { importIntoPremiere } = require('./premiereOpen.cjs');
+const { parseInput } = require('./links.cjs');
+const youtube = require('./youtube.cjs');
+const twitch = require('./twitch.cjs');
+const { Projects } = require('./projects.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ICON = path.join(DIST, process.platform === 'win32' ? 'icon.ico' : 'icon.png');
@@ -44,6 +48,8 @@ let tools;
 let engine;
 let whisper;
 let exporter;
+let projects;
+const chatJobs = new Map(); // twitch video id -> Promise
 let main = null;
 let mini = null;
 let miniAuto = false;
@@ -225,7 +231,7 @@ function notifyDone(job) {
   if (s.ui.notify && Notification.isSupported()) {
     const n = new Notification({
       title: 'Download finished',
-      body: `${out.map((o) => o.name).join(', ')} â€” ${job.title}`.slice(0, 200),
+      body: `${out.map((o) => o.name).join(', ')} — ${job.title}`.slice(0, 200),
       icon: ICON_PNG,
       silent: false,
     });
@@ -266,6 +272,52 @@ function registerIpc() {
     return probe.probe(tools, url, store.get().quality);
   });
   ipcMain.handle('frames', (_e, cacheId, times, height) => frames.grabFrames(tools, cacheId, times, height));
+  // ---- browse: channel pages ----
+  ipcMain.handle('input:parse', (_e, text) => parseInput(text));
+  const wrap = (fn) => async (...a) => {
+    try {
+      return { ok: true, ...(await fn(...a)) };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  };
+  ipcMain.handle(
+    'browse:channel',
+    wrap(async (_e, { site, ref, tab }) => (site === 'twitch' ? twitch.channel(ref, tab || 'archive') : youtube.channel(ref, tab)))
+  );
+  ipcMain.handle(
+    'browse:more',
+    wrap(async (_e, { site, ref, tab, next }) => (site === 'twitch' ? twitch.list(ref, tab, next) : youtube.more(next)))
+  );
+  ipcMain.handle(
+    'browse:tab',
+    wrap(async (_e, { site, ref, tab }) => (site === 'twitch' ? twitch.list(ref, tab) : youtube.channel(ref, tab)))
+  );
+  ipcMain.handle('browse:search', wrap(async (_e, { site, q }) => ({ results: site === 'twitch' ? await twitch.search(q) : await youtube.search(q) })));
+  // ---- Twitch chat activity ----
+  ipcMain.handle(
+    'chat:activity',
+    wrap(async (_e, { twitchId, duration, growing }) => {
+      if (!twitchId) throw new Error('No Twitch VOD');
+      if (!chatJobs.has(twitchId)) {
+        const p = twitch
+          .chatActivity(twitchId, duration, {
+            cacheDir: path.join(app.getPath('userData'), 'cache', 'chat'),
+            growing,
+            onProgress: (pr) => broadcast('chat:progress', { twitchId, p: pr }),
+          })
+          .finally(() => setTimeout(() => chatJobs.delete(twitchId), 1000));
+        chatJobs.set(twitchId, p);
+      }
+      return { activity: await chatJobs.get(twitchId) };
+    })
+  );
+  // ---- projects ----
+  ipcMain.handle('projects:list', () => projects.list());
+  ipcMain.handle('projects:get', (_e, id) => projects.get(id));
+  ipcMain.handle('projects:save', (_e, p) => projects.save(p));
+  ipcMain.handle('projects:remove', (_e, id) => projects.remove(id));
+  ipcMain.handle('projects:rename', (_e, id, name) => projects.rename(id, name));
   ipcMain.handle('name:peek', (_e, args) => naming.peek(store.get(), args));
   ipcMain.handle('job:add', (_e, spec) => {
     const s = store.get();
@@ -417,6 +469,7 @@ function runTestScript(file) {
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   store = new Store(userData);
+  projects = new Projects(path.join(userData, 'projects'));
   if (!store.get().output.baseDir) store.patch({ output: { baseDir: defaultBaseDir() } });
   tools = new Tools(path.join(userData, 'bin'), store);
   engine = new Engine({ tools, store });

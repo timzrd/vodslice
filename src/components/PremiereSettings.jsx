@@ -23,25 +23,14 @@ export default function PremiereSettings({ settings }) {
   useEffect(() => {
     window.api.whisperStatus().then(setWs).catch(() => {});
   }, []);
-  const [W, H] = P.format === '9:16' ? [1440, 2560] : [1440, 1920];
+  const [W, H] = [1440, 1920];
 
   return (
     <div>
-      <Row label="Build Premiere sequence after every download" hint="Captions + vertical sequence are ready when the download finishes — then one click on “Open in Premiere”.">
+      <Row label="Build Premiere sequence after every download" hint="Captions + a 1440×1920 sequence are ready when the download finishes — then one click on “Open in Premiere”.">
         <Toggle checked={P.enabled} onChange={(v) => set({ enabled: v })} />
       </Row>
-      <Row label="Format">
-        <Seg
-          size="sm"
-          value={P.format}
-          onChange={(v) => set({ format: v })}
-          options={[
-            { value: '3:4', label: '1440×1920 (3:4)' },
-            { value: '9:16', label: '1440×2560 (9:16)' },
-          ]}
-        />
-      </Row>
-      <Row label="Facecam height" hint={`Top ${Math.round(P.split * H)} px facecam, bottom ${H - Math.round(P.split * H)} px gameplay.`}>
+      <Row label="Facecam height" hint={`${W}×${H}: top ${Math.round(P.split * H)} px facecam (cropped to fit), bottom ${H - Math.round(P.split * H)} px gameplay.`}>
         <div className="slider-row">
           <input type="range" min="0.2" max="0.5" step="0.01" value={P.split} onChange={(e) => set({ split: Number(e.target.value) })} />
           <span className="val">{Math.round(P.split * 100)}%</span>

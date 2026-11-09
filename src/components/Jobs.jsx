@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Icon, Spinner } from './ui.jsx';
 import { fmtBytes, fmtEta } from '../lib/time.js';
 
@@ -135,6 +135,62 @@ export function JobRow({ job, compact, notify, onCaptions }) {
           <Icon name="x" size={14} />
         </button>
       </div>
+    </div>
+  );
+}
+
+/** Title-bar button with a progress ring; opens the download list (drag files from there into Premiere). */
+export function DownloadsButton({ jobs, notify, onCaptions, open, setOpen }) {
+  const ref = useRef(null);
+  const active = jobs.filter((j) => ACTIVE.includes(j.status));
+  const avg = active.length ? active.reduce((a, j) => a + (j.progress || 0), 0) / active.length : 0;
+  const done = jobs.filter((j) => j.status === 'done').length;
+  useEffect(() => {
+    if (!open) return;
+    const h = (e) => ref.current && !ref.current.contains(e.target) && !e.target.closest('.ctx-menu') && setOpen(false);
+    const k = (e) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('pointerdown', h, true);
+    window.addEventListener('keydown', k);
+    return () => {
+      window.removeEventListener('pointerdown', h, true);
+      window.removeEventListener('keydown', k);
+    };
+  }, [open, setOpen]);
+  const R = 13;
+  const C = 2 * Math.PI * R;
+  return (
+    <div className="dl-wrap" ref={ref}>
+      <button className={`dl-top ${active.length ? 'busy' : ''} ${open ? 'open' : ''}`} onClick={() => setOpen(!open)} title="Downloads">
+        <svg width="30" height="30" viewBox="0 0 30 30" className="dl-ring">
+          <circle cx="15" cy="15" r={R} className="ring-bg" />
+          {active.length > 0 && <circle cx="15" cy="15" r={R} className="ring-fg" strokeDasharray={C} strokeDashoffset={C * (1 - avg)} />}
+        </svg>
+        <Icon name="download" size={15} />
+        {active.length > 0 ? <span className="dl-pct">{Math.round(avg * 100)}%</span> : done > 0 ? <span className="dl-count">{done}</span> : null}
+      </button>
+      {open && (
+        <div className="dl-panel">
+          <div className="jobs-head">
+            <span className="h-title">Downloads</span>
+            <span className="h-sub">{active.length ? `${active.length} running · ${Math.round(avg * 100)}%` : jobs.length ? `${done} finished` : ''}</span>
+            <div className="grow" />
+            {jobs.length > active.length && (
+              <button className="chip sm" onClick={() => window.api.clearJobs()}>
+                Clear finished
+              </button>
+            )}
+            <button className="icon-btn xs" title="Mini overlay (always on top)" onClick={() => window.api.toggleMini()}>
+              <Icon name="pip" size={14} />
+            </button>
+          </div>
+          <div className="jobs-list">
+            {!jobs.length && <div className="dl-empty">Nothing downloaded yet — check clips and hit Download.</div>}
+            {[...jobs].reverse().map((j) => (
+              <JobRow key={j.id} job={j} notify={notify} onCaptions={onCaptions} />
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -44,6 +44,13 @@ const P = {
   edit: 'M4 20h4L19 9l-4-4L4 16ZM13.5 6.5l4 4',
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   history: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5M12 7v5l3 2',
+  chat: 'M4 5h16v11H9l-5 4Z',
+  flame: 'M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5Z',
+  home: 'M3 11 12 4l9 7M5 9.5V20h5v-6h4v6h5V9.5',
+  compass: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18ZM15.5 8.5l-2 5-5 2 2-5Z',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14ZM20 20l-4-4',
+  more: 'M5 12h.01M12 12h.01M19 12h.01',
+  scissorsSm: 'M6 9a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6ZM20 4 8.1 15.9M14.5 14.5 20 20',
 };
 
 export function Icon({ name, size = 16, stroke = 2, fill = false, style, className }) {

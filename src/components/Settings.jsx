@@ -27,7 +27,9 @@ function Section({ title, icon, children, id }) {
 }
 
 export const SHORTCUTS = [
-  ['Ctrl+V', 'Paste link (anywhere)'],
+  ['Ctrl+V', 'Paste a video or channel link (anywhere)'],
+  ['Ctrl+K', 'Search a streamer'],
+  ['Wheel / Ctrl+wheel', 'Scroll / zoom the timeline'],
   ['Space', 'Play / pause'],
   ['J', 'Back 10 s'],
   ['L / K', 'Play faster (Premiere-style) / stop'],
@@ -35,10 +37,13 @@ export const SHORTCUTS = [
   ['← / →', 'Back / forward 5 s (Shift: 1 s)'],
   ['↑ / ↓', 'Volume up / down (5 % steps)'],
   ['M', 'Mute / unmute'],
-  ['I / O', 'Set start / end of selected segment to playhead'],
+  ['I / O', 'Trim the selected clip — or IN, then O creates a clip'],
   ['N', 'New clip at playhead'],
-  ['Shift+N', 'Add segment to selected clip'],
-  ['Del', 'Remove selected segment'],
+  ['Shift+N', 'Add a part to the selected clip'],
+  ['S', 'Split the selected clip at the playhead'],
+  ['Esc', 'Deselect'],
+  ['Del', 'Delete the selected clip / part'],
+  ['Ctrl+A', 'Check / uncheck all clips'],
   ['Ctrl+Z / Ctrl+Y', 'Undo / redo clip edits'],
   ['F', 'Facecam on / off'],
   ['D', 'Auto-detect facecam'],

@@ -59,6 +59,10 @@ const DEFAULTS = {
     miniAutoShow: true,        // show mini overlay when the main window is minimized during a download
     miniBounds: null,
     windowBounds: null,
+    activity: true,            // heatmap (YouTube "most replayed") / Twitch chat activity on the timeline
+    emotes: true,              // emote markers at chat peaks
+    pipPreview: true,          // live 3:4 Premiere preview inside the player while the Premiere layout is on
+    recentChannels: [],        // [{site, ref, name, avatar}] for the home screen
   },
   tools: {
     autoUpdate: true,
@@ -66,7 +70,7 @@ const DEFAULTS = {
   },
   premiere: {
     enabled: false,            // build the Premiere sequence automatically after each download
-    format: '3:4',             // '3:4' = 1440×1920 | '9:16' = 1440×2560
+    format: '3:4',             // fixed 1440×1920 (the facecam box stays free, Premiere crops it to the top area)
     split: 1 / 3,              // facecam share of the height
     open: 'premiere',          // after building: 'premiere' = open it in Premiere | 'folder' | 'none'
     calibration: null,         // optional {kx, ky} if Premiere maps positions differently

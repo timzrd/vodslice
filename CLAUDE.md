@@ -38,10 +38,18 @@ in the **cloud** (Linux) for small changes. In a cloud session:
 - Gives broad freedom ("mach wie du meinst"), but expects things to really work: test against real VODs/clips.
 
 ## What the app does
-Electron desktop app: paste a YouTube/Twitch link (click the URL field = paste from clipboard) → mark clips on a
-timeline → download only those parts fast → get `Gameplay.mp4` + `Facecam.mp4` in auto-numbered folders
-(`DrDonut 70`, …) → optionally Topaz-enhanced facecam → optionally a ready **Premiere sequence** (FCP7 XML) with
-local **captions**. Installed per-user via NSIS; updates itself from GitHub releases.
+Electron desktop app with three views (title-bar tabs):
+- **Home** — saved projects (thumbnail with the facecam box + clip marks), recent channels, recent downloads.
+- **Browse** — a recreated YouTube (red) / Twitch (purple) channel page: banner, avatar, subscribers, tabs
+  (Videos/Streams · Past broadcasts/Highlights/Clips), infinite grid. Picking a video flies its thumbnail into the
+  player while the page shrinks into the media bin.
+- **Edit** — NLE layout: media bin (left) | player (exactly 16:9 of the height) | clips + export (right), timeline
+  below (ruler, filmstrip lane with clips, activity track). Mark clips (drag / I+O / N) → check the ones to export →
+  download only those parts fast → `Gameplay.mp4` + `Facecam.mp4` in auto-numbered folders (`DrDonut 70`, …) →
+  optional Topaz-enhanced facecam → optional ready **Premiere sequence** (FCP7 XML, always 1440×1920) with local
+  **captions**.
+The top field takes a video link (loads it), a channel link (opens the channel) or a name (asks YouTube or Twitch,
+opens the best match, other matches as chips). Installed per-user via NSIS; updates itself from GitHub releases.
 
 ## Run / build
 ```bash
@@ -77,12 +85,24 @@ electron/              main process (CommonJS, no build step)
   premiereExport.cjs   builds <clip>/premiere/ (wav → whisper → align → captions → overlay → xml → project.json)
   premiereOpen.cjs     "Open in Premiere": focus Premiere, Ctrl+I, paste path, Enter (PowerShell + user32)
   updater.cjs          electron-updater (GitHub provider, manual download + restart)
+  links.cjs            what the top field got: video link / channel link / name
+  youtube.cjs          channel page scrape (ytInitialData) + innertube continuations + channel search
+  twitch.cjs           public web GQL: channel, VODs/highlights/clips, search, seek-preview storyboards,
+                       chat activity (sampled comments → counts + peaks with 7TV/BTTV/FFZ/Twitch emotes)
+  projects.cjs         %APPDATA%\Vodslice\projects\<id>.json + home-screen summaries
 src/                   renderer (React 19 + Vite 8, plain JSX)
-  App.jsx              all editor state: sources, clips (+undo), per-source facecam keys/crop/premiere rect, keys
-  components/          Player (video + BoxEditor overlays), ScrubBar (in-video progress bar), Timeline (zoom lane),
-                       TimeField (drag time picker), ClipList, Jobs (downloads + Open in Premiere), Mini (overlay),
-                       Settings (+ TopazSettings, PremiereSettings), CaptionsEditor, UpdatePill, Volume, ui.jsx
+  App.jsx              shell: tabs, top field (link/channel/name + YouTube/Twitch picker), channel state, projects,
+                       morph animation, downloads button, settings
+  Editor.jsx           the workspace: sources (bin), clips (+undo, checkbox = export), per-source facecam keys/crop/
+                       Premiere rect, timeline view, keys, chat activity, download spec, autosave (onProject)
+  components/          Player (video + BoxEditor overlays + scrub preview), ScrubBar (in-video bar, emotes),
+                       Timeline (ruler, filmstrip, clips lane, activity, wheel/zoom, edge auto-scroll), Bin, ClipList,
+                       ExportPanel (facecam / enhance / Premiere / crop + folder, quality, Download), PremierePreview
+                       (live 3:4 canvas), Browse, Home, ContextMenu (useMenu), Jobs (DownloadsButton + JobRow),
+                       TimeField, Mini, Settings (+ TopazSettings, PremiereSettings), CaptionsEditor, UpdatePill, ui.jsx
   lib/facecam.js       MediaPipe face detection (WASM, offline) ; lib/camrect.js = border search (pure, testable)
+  lib/storyboard.js    storyboard sprite cell → CSS (filmstrip, scrub preview, clip thumbnails)
+  styles.css + styles-v2.css   base styles + the v2 shell/editor/browse/home styles
 public/                models/*.tflite (MediaPipe face detector), icon.png/ico; mediapipe wasm copied at build
 scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs, dev/ (test harnesses, see below)
 ```
@@ -119,8 +139,10 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
   (`premiereTrackType="Stereo"`) → lands as one stereo clip on A1.
 - Layout: V1 gameplay (original file, scale + position "cover" of the bottom area, window chosen with the blue
   box), V2 the pre-cropped `Facecam.mp4` (or `Facecam Enhanced.mp4`) filling the top, **no facecam audio**,
-  V3 caption overlay, A1 gameplay stereo, empty SFX/Music tracks. Facecam box is locked to the top-area ratio
-  while the Premiere layout is on.
+  V3 caption overlay, A1 gameplay stereo, empty SFX/Music tracks.
+- The sequence is **always 1440×1920** (Tim dropped the 9:16 option). The facecam box stays free: the XML scales
+  `Facecam.mp4` to cover the top area and crops the overflow centered (Crop filter). The editor shows the same
+  composition live (`PremierePreview`, canvas drawn from the playing video) — keep both in sync.
 - **Premiere cannot open an XML from the command line** ("file path does not exist"), so "Open in Premiere"
   imports via its Import dialog with keystrokes (`premiereOpen.cjs`). Needs Premiere running with a project open.
   Codes: OK / NO_PROJECT / NOT_RUNNING (starts Premiere) / NO_FOCUS / NO_DIALOG. Path is always on the clipboard.
@@ -139,6 +161,34 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 - CLI = Topaz's bundled `ffmpeg.exe` with `tvai_up`; env `TVAI_MODEL_DATA_DIR` / `TVAI_MODEL_DIR` =
   `C:\ProgramData\Topaz Labs LLC\Topaz Video AI\models\`. Tim's usual setting (from his Topaz logs): `iris-3`,
   2×, `estimate=8` (auto), `blend=0.2` → preset "Face 2× · Iris".
+
+**Browse (channel pages, no API keys)**
+- YouTube: fetch `youtube.com/<ref>/<streams|videos>` with cookies `SOCS=CAI; CONSENT=YES+1` (skips the EU
+  consent wall), parse `ytInitialData`. Items are `lockupViewModel` now (old `videoRenderer` kept as fallback).
+  Next pages: the grid's `continuationItemRenderer` token → POST `/youtubei/v1/browse` with WEB client version +
+  visitor data from the page. Many DrDonut streams have an **empty (zero-width) title** → shown as "Untitled stream".
+  Channel search: `/results?search_query=…&sp=EgIQAg%3D%3D`; in `channelRenderer` the @handle sits in
+  `subscriberCountText` and the subscriber count in `videoCountText` (swapped by YouTube).
+- Twitch: public web GQL (`Client-ID kimne78kx3ncx6brgo4mv6wki5h1ko`), **raw queries** work for user, videos,
+  clips (no `sort` arg, it errors), `searchUsers`, `seekPreviewsURL`. Video `after` cursors are broken → one page of
+  100 (Twitch keeps ~60 days). `profileImageURL(width)` only accepts 28/50/70/150/300/600.
+- Twitch chat: `comments(contentOffsetSeconds:)` works without login, **cursor paging fails the integrity check**.
+  So chat is sampled: one offset request per window (step = duration/1200, 10–60 s, 12 parallel) → ~30 s for 6 h.
+  Counts inside a window, extrapolated if the page ends early; peaks = local maxima > 1.6× median, top emote per
+  peak (one vote per message) from Twitch fragments + 7TV/BTTV/FFZ channel+global sets. Cached in
+  `%APPDATA%\Vodslice\cache\chat\<id>.json` (bump `v` when the format/algorithm changes). Clicking an emote seeks
+  12 s before the peak (chat reacts late).
+- Twitch VOD storyboards come from `seekPreviewsURL` (yt-dlp has none) → filmstrip + scrub preview. Twitch clips
+  get ~6 ffmpeg frames instead.
+
+**Projects / editor model**
+- A project = sources (bin) + per-source state + clips. Autosaved 0.7 s after changes; signed media URLs are not
+  stored — opening a project shows it instantly from the stored info (`stale: true`) and re-probes in the background.
+- Clips carry `on` (checkbox = included in Download) and `sent`. A download unchecks what it took, so the next
+  Download only takes new clips. Right-click (timeline segment or list) = download just that clip.
+- I/O: with a clip selected they trim it; without, I sets a pending IN and O creates the clip IN→playhead.
+- React gotcha that broke facecam auto-detect once: never compute a return value inside a `setState(fn)` updater
+  (it runs later) — `initSource` decides from `srcStateRef`.
 
 **Updates**
 - `electron-updater`, GitHub provider `timzrd/vodslice` (public). Manual download from the title-bar pill, then
@@ -164,5 +214,7 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 ## Known gaps / ideas
 - "Open in Premiere" keystroke import was not verified end-to-end by Claude (Tim was using the PC). Import of the
   generated XMLs themselves was verified. Paths with umlauts not yet tested in Premiere.
-- Possible next features Tim might like: Twitch chat-activity heatmap on the timeline, caption presets,
-  auto-detect facecam position changes over time.
+- Possible next features Tim might like: caption presets, auto-detect facecam position changes over time,
+  YouTube live-chat replay activity (Twitch chat activity exists), a hover frame preview on the timeline.
+- The browse scrapers depend on YouTube/Twitch page structures — if a channel page comes back empty, check
+  `youtube.cjs itemsOf/headerOf` against a fresh `ytInitialData` first.
