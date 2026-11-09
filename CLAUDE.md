@@ -2,8 +2,10 @@
 
 Read this first. It is the complete context of how and why Vodslice was built (the original chat is gone).
 
-## You are probably in a cloud session (Linux) — read this
-Tim pairs new chats with this GitHub repo, not with his PC. So:
+## Cloud or local session? Check first
+Tim's main workflow is a **local** session on his Windows PC in `C:\Users\timzu\Dev\Vodslice` — there you can
+run and test everything (see "Where things live" and "Testing"). Sometimes he pairs a chat with this GitHub repo
+in the **cloud** (Linux) for small changes. In a cloud session:
 - **You can:** read/edit all code, `npm ci`, `npm test` (pure-module self-test, no binaries/network),
   `npx vite build` (renderer compiles), `node --check electron/*.cjs`, commit, push, tag releases.
 - **You can't:** run the Electron GUI against his setup, use his GPU, Premiere, Topaz, or `%APPDATA%\Vodslice`.
@@ -145,7 +147,8 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 ## Where things live on Tim's PC
 - Installed app: `%LOCALAPPDATA%\Programs\Vodslice`. Data: `%APPDATA%\Vodslice` (`settings.json`,
   `history.json`, `bin\` with yt-dlp/ffmpeg/deno and `bin\whisper\{cuda,cpu}` + models).
-- Source: `C:\Users\timzu\Desktop\Vodslice` (this repo). His clips live in Google Drive ("Meine Ablage/projects").
+- Source: `C:\Users\timzu\Dev\Vodslice` (this repo; moved from `Desktop\Vodslice` on 2026-11-09). Local sessions
+  are his main workflow (Topaz, Premiere, GPU whisper only exist there); cloud sessions are for small changes. His clips live in Google Drive ("Meine Ablage/projects").
 - Dev runs use AUMID `app.vodslice.dev` so Windows doesn't cache the Electron icon for the real app.
 
 ## Testing
