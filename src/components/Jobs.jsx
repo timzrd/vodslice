@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { Icon, Spinner } from './ui.jsx';
 import { fmtBytes, fmtEta } from '../lib/time.js';
 
+const PHASE_COLOR = { download: '#39c6ff', process: '#2dd4bf', chat: '#ff9f43', enhance: '#a78bfa', premiere: '#8f8fff' };
+
 const OPEN_MSG = {
   OK: ['Imported into Premiere — the sequence is in your project panel', 'ok'],
   NO_PROJECT: ['Open a project in Premiere first, then click again (path is copied: Ctrl+I → Ctrl+V)', 'warn'],
@@ -69,7 +71,7 @@ export function JobRow({ job, compact, notify, onCaptions }) {
         ? job.error || 'Failed'
         : job.status === 'canceled'
           ? 'Canceled'
-          : [job.stage, `${pct}%`, job.speed > 0 ? `${fmtBytes(job.speed)}/s` : '', fmtEta(job.eta)].filter(Boolean).join(' · ');
+          : [job.filesReady ? 'Clip ready' : '', job.stage, `${pct}%`, job.speed > 0 ? `${fmtBytes(job.speed)}/s` : '', fmtEta(job.eta)].filter(Boolean).join(' · ');
 
   const dragStart = (e) => {
     e.preventDefault();
@@ -85,7 +87,7 @@ export function JobRow({ job, compact, notify, onCaptions }) {
           {!compact && <span className="job-title">{job.title}</span>}
         </div>
         <div className="bar">
-          <span style={{ width: `${job.status === 'done' ? 100 : pct}%` }} />
+          <span style={{ width: `${job.status === 'done' ? 100 : pct}%`, background: active && PHASE_COLOR[job.phase] ? PHASE_COLOR[job.phase] : undefined }} />
         </div>
         <div className="job-meta" title={job.error || ''}>
           {active && job.status !== 'queued' && <Spinner size={10} />}

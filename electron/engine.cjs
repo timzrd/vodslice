@@ -77,8 +77,9 @@ class Engine extends EventEmitter {
         await this.chatRenderer.render({
           messages: msgs.filter((m) => m.t >= -pre - 1),
           duration: acc,
-          width: Math.round(C.width || 520),
-          height: Math.round(C.height || 820),
+          // with a Premiere layout the chat is rendered at the exact size of its box
+          width: Math.round((job.spec.chatSize && job.spec.chatSize.width) || C.width || 520),
+          height: Math.round((job.spec.chatSize && job.spec.chatSize.height) || C.height || 820),
           fontSize: Math.round(C.fontSize || 26),
           dir: path.join(tmp, `chat${gi}`),
           out,
@@ -257,6 +258,16 @@ class Engine extends EventEmitter {
         error: null,
         createdAt: now(),
         quality: spec.qualityLabel || '',
+        // pipeline shown in the Downloads tab
+        phase: 'queued',
+        phases: [
+          'download',
+          'process',
+          spec.chat ? 'chat' : null,
+          spec.enhance && spec.facecamOn ? 'enhance' : null,
+          this.store.get().premiere.enabled && !spec.skipPremiere ? 'premiere' : null,
+        ].filter(Boolean),
+        preset: spec.studio ? spec.studio.name : null,
       },
     };
     this.jobs.set(id, job);
@@ -320,7 +331,7 @@ class Engine extends EventEmitter {
       if (premiereOn) await this.premiereStep(job);
       job.scale = 0;
       job.release();
-      this.set(job, { status: 'done', stage: 'Done', progress: 1, speed: 0, eta: 0, finishedAt: now() }, true);
+      this.set(job, { status: 'done', stage: 'Done', phase: 'done', progress: 1, speed: 0, eta: 0, finishedAt: now() }, true);
       this.emit('done', job.state);
     } catch (e) {
       job.release();
@@ -399,7 +410,7 @@ class Engine extends EventEmitter {
   async process(job, tmp) {
     const s = job.spec;
     const settings = this.store.get();
-    this.set(job, { status: 'preparing', stage: 'Preparing' }, true);
+    this.set(job, { status: 'preparing', stage: 'Preparing', phase: 'download' }, true);
     await this.tools.ensure();
     const srcs = await this.prepareSources(job);
     const pad = s.full ? 0 : Math.max(0, Number(settings.cut.padding) || 0);
@@ -498,7 +509,7 @@ class Engine extends EventEmitter {
     }
 
     // ---- Process ----
-    this.set(job, { status: 'processing', stage: 'Cutting', speed: 0, eta: null, progress: dlWeight }, true);
+    this.set(job, { status: 'processing', stage: 'Cutting', phase: 'process', speed: 0, eta: null, progress: dlWeight }, true);
     const enc = await this.detectEncoders();
     const groups = this.buildGroups(job, ranges);
     const fcOn = !!s.facecamOn;
@@ -630,8 +641,14 @@ class Engine extends EventEmitter {
       this.set(job, { outputs: outputs.map((o) => ({ ...o, files: [...o.files] })) }, true);
     }
 
+    // the clips themselves are done — everything after this only adds files
+    this.set(job, { filesReady: true }, true);
+
     // ---- Chat overlay ----
-    if (s.chat && this.chatRenderer) await this.chatStep(job, groups, outputs, srcs, tmp);
+    if (s.chat && this.chatRenderer) {
+      this.set(job, { phase: 'chat' }, true);
+      await this.chatStep(job, groups, outputs, srcs, tmp);
+    }
 
     // ---- Topaz Video AI facecam enhancement ----
     if (enhance && facecams.length) {
@@ -640,7 +657,7 @@ class Engine extends EventEmitter {
       for (let i = 0; i < facecams.length; i++) {
         const f = facecams[i];
         const enhanced = naming.uniquePath(f.file.replace(/\.mp4$/i, ` ${settings.topaz.suffix || 'Enhanced'}.mp4`));
-        this.set(job, { stage: facecams.length > 1 ? `Enhancing facecam ${i + 1}/${facecams.length}` : 'Enhancing facecam', eta: null }, true);
+        this.set(job, { stage: facecams.length > 1 ? `Enhancing facecam ${i + 1}/${facecams.length}` : 'Enhancing facecam', phase: 'enhance', eta: null }, true);
         const t0 = now();
         try {
           await this.topazRun(f.file, enhanced, enhance, enc, {
@@ -673,6 +690,7 @@ class Engine extends EventEmitter {
   /** Build the premiere/ folder (transcript, captions, XML) for every output of a finished job. */
   async premiereStep(job) {
     job.inPremiere = true;
+    this.set(job, { phase: 'premiere' }, true);
     const outs = job.state.outputs || [];
     for (let i = 0; i < outs.length; i++) {
       const o = outs[i];
@@ -681,7 +699,7 @@ class Engine extends EventEmitter {
         const proj = await this.premiere.build(o.dir, {
           name: o.name,
           prefix: o.prefix || '',
-          gameplayRect: job.spec.premiereRect || null,
+          preset: job.spec.studio || null,
           job,
           reuseTranscript: false,
           onStage: (label, p) => this.set(job, { stage: `${label}${suffix}`, progress: Math.min(0.995, 0.86 + 0.14 * ((i + (p || 0)) / outs.length)), eta: null }),

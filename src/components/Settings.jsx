@@ -27,7 +27,7 @@ function Section({ title, icon, children, id }) {
   );
 }
 
-export default function Settings({ settings, onClose, tools, topaz: topazInit, section, onLogin }) {
+export default function Settings({ settings, onClose, tools, topaz: topazInit, section, onLogin, onOpenStudio }) {
   const s = settings;
   const [topaz, setTopaz] = useState(topazInit);
   useEffect(() => {
@@ -310,7 +310,7 @@ export default function Settings({ settings, onClose, tools, topaz: topazInit, s
           </Section>
 
           <Section title="Premiere" icon="film" id="premiere">
-            <PremiereSettings settings={s} />
+            <PremiereSettings settings={s} onOpenStudio={onOpenStudio} />
           </Section>
 
           <Section title="Topaz Video AI" icon="sparkles" id="topaz">

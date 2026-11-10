@@ -52,6 +52,8 @@ contextBridge.exposeInMainWorld('api', {
   premiereWords: (file) => ipcRenderer.invoke('premiere:words', file),
   premiereSaveWords: (file, words) => ipcRenderer.invoke('premiere:saveWords', file, words),
   onPremiere: on('premiere:progress'),
+  listFonts: () => ipcRenderer.invoke('fonts:list'),
+  mediaUrl: (file) => `vsfile://media/?p=${encodeURIComponent(file)}`,
   whisperStatus: () => ipcRenderer.invoke('whisper:status'),
   parseInput: (text) => ipcRenderer.invoke('input:parse', text),
   browseChannel: (o) => ipcRenderer.invoke('browse:channel', o),
@@ -75,5 +77,6 @@ contextBridge.exposeInMainWorld('api', {
   chatRenderStart: (id, total) => ipcRenderer.send('chatrender:start', id, total),
   chatRenderFrame: (id, i, t, bytes) => ipcRenderer.send('chatrender:frame', id, i, t, bytes),
   chatRenderDone: (id) => ipcRenderer.send('chatrender:done', id),
+  capsRenderBand: (id, band) => ipcRenderer.send('chatrender:band', id, band),
   chatRenderError: (id, msg) => ipcRenderer.send('chatrender:error', id, msg),
 });

@@ -5,6 +5,11 @@ const { execFile } = require('node:child_process');
 const captions = require('./captions.cjs');
 const premiere = require('./premiere.cjs');
 const { snapWords } = require('./align.cjs');
+const naming = require('./naming.cjs');
+
+let layoutMod = null;
+/** electron/layout.mjs is shared with the renderer (ES module). */
+const layoutLib = async () => layoutMod || (layoutMod = await import('./layout.mjs'));
 
 const FORMATS = { '3:4': [1440, 1920], '9:16': [1440, 2560] };
 
@@ -73,13 +78,28 @@ class PremiereExporter {
     };
   }
 
+  /** The layout preset to build with: an explicit snapshot (download spec / Studio) or the active Studio preset. */
+  async preset(p) {
+    const L = await layoutLib();
+    if (p) return L.normalizePreset(p);
+    const st = this.store.get();
+    const s = st.studio || {};
+    const list = s.presets || [];
+    return L.normalizePreset(list.find((x) => x.id === s.active) || list[0] || L.builtInPresets(st.premiere)[0]);
+  }
+
   /**
-   * Create / refresh premiere/<name>.xml (+ srt, ass, overlay, project.json).
+   * Create / refresh premiere/<name>.xml (+ srt, caption overlay, project.json) from a layout preset.
    * opts.reuseTranscript: keep words.json (edited transcript) instead of running whisper again.
    */
-  async build(dir, { name, prefix = '', gameplayRect = null, job, onStage, reuseTranscript = true } = {}) {
+  async build(dir, { name, prefix = '', preset = null, job, onStage, reuseTranscript = true } = {}) {
+    const L = await layoutLib();
     const st = this.store.get();
     const P = st.premiere;
+    const pr = await this.preset(preset);
+    const cap = pr.captions;
+    const capLayer = L.layerOf(pr, 'captions');
+    const wantCaptions = !!(capLayer && capLayer.on);
     const files = this.findFiles(dir, prefix);
     if (!files.gameplay) throw new Error('Gameplay file not found in the clip folder');
     const outDir = path.join(dir, prefix ? `${prefix.trim()} premiere` : 'premiere');
@@ -93,14 +113,13 @@ class PremiereExporter {
     if (!g || !g.width) throw new Error('Could not read the gameplay file');
     const fc = files.facecam ? await this.probe(files.facecam) : null;
     const chatMedia = files.chat ? await this.probe(files.chat) : null;
-    const [W, H] = FORMATS['3:4']; // always 1440×1920: the facecam is cropped to the top area in Premiere
-    const split = Math.min(0.6, Math.max(0.15, Number(P.split) || 1 / 3));
+    const [W, H] = L.frameSize(pr.ratio);
 
     // ---- transcript ----
     let words = null;
     let device = prev.device || null;
     const wordsFile = path.join(outDir, `${base}.words.json`);
-    if (P.captions.enabled) {
+    if (wantCaptions) {
       if (reuseTranscript && fs.existsSync(wordsFile)) words = JSON.parse(fs.readFileSync(wordsFile, 'utf8')).words;
       else if (g.hasAudio) {
         stage('Preparing speech model', 0);
@@ -117,69 +136,67 @@ class PremiereExporter {
       }
     }
 
-    // ---- captions ----
+    // ---- captions: SRT + animated overlay (drawn by the same code as the Studio preview) ----
     let srt = null;
-    let ass = null;
     let overlay = null;
-    if (words && words.length) {
-      const c = P.captions;
-      const capY = c.posY != null ? c.posY * H : Math.round(H * split);
-      const r = captions.writeAll(outDir, base, words, {
-        maxWords: c.maxWords,
-        maxChars: c.maxChars,
-        maxDur: c.maxDur,
-        pause: c.pause,
-        offsetMs: c.offsetMs,
-        width: W,
-        height: H,
-        y: capY,
-        font: c.font,
-        size: c.size,
-        color: c.color,
-        highlight: c.highlight,
-        outline: c.outline,
-        uppercase: c.uppercase,
-      });
-      srt = r.srt;
-      ass = r.ass;
-      if (c.overlay) {
+    if (wantCaptions && words && words.length) {
+      const chunks = L.chunkWords(words, { words: cap.words, maxChars: cap.maxChars, maxDur: P.captions.maxDur, pause: P.captions.pause, offsetMs: P.captions.offsetMs });
+      srt = path.join(outDir, `${base}.srt`);
+      fs.writeFileSync(srt, '﻿' + captions.toSrt(chunks.map((c) => ({ ...c, words: c.words.map((w) => ({ ...w, w: L.captionText(w.w, cap) })) }))));
+      if (this.overlayRenderer) {
         stage('Rendering captions', 0);
         overlay = path.join(outDir, `${base}_captions.mov`);
-        const assArg = r.ass.replace(/\\/g, '/').replace(/:/g, '\\:').replace(/'/g, "\\'");
-        await this.ffmpeg(
-          [
-            '-f', 'lavfi', '-i', `color=c=black@0.0:s=${W}x${H}:r=${premiere.rateOf(g.fps).fps}:d=${g.duration.toFixed(3)},format=rgba`,
-            '-vf', `ass='${assArg}':alpha=1`,
-            '-c:v', 'qtrle', '-pix_fmt', 'argb', overlay,
-          ],
-          { job, duration: g.duration, onProgress: (p) => stage('Rendering captions', p) }
-        );
+        try {
+          fs.rmSync(overlay, { force: true });
+        } catch {
+          overlay = naming.uniquePath(overlay); // still open in Premiere
+        }
+        const fps = premiere.rateOf(g.fps).fps;
+        const frames = path.join(outDir, '.caption-frames');
+        try {
+          await this.overlayRenderer.render({
+            page: '#capsrender',
+            payload: { cap, layer: { x: capLayer.x * W, y: capLayer.y * H, w: capLayer.w * W }, width: W, height: H, chunks, fps: 30 },
+            width: 400,
+            height: 300,
+            duration: g.duration,
+            dir: frames,
+            out: overlay,
+            signal: job && job.abort ? job.abort.signal : undefined,
+            vf: (band) => `fps=${fps.toFixed(4)},pad=${W}:${H}:0:${band.bandY || 0}:color=0x00000000,format=argb`,
+            ffmpeg: (args, o) => this.ffmpeg(args, { ...o, job }),
+            onProgress: (p) => stage('Rendering captions', p),
+          });
+        } finally {
+          fs.rmSync(frames, { recursive: true, force: true });
+        }
       }
     }
 
-    // ---- XML ----
+    // ---- XML: layers of the preset, bottom first ----
     stage('Writing Premiere file', 1);
-    const xml = premiere.buildXml({
-      name: base,
-      width: W,
-      height: H,
-      split,
-      gameplay: g,
-      gameplayRect,
-      facecam: fc && fc.width ? fc : null,
-      overlay: overlay ? { path: overlay, width: W, height: H } : null,
-      chat: chatMedia && chatMedia.width ? chatMedia : null,
-      calibration: P.calibration || null,
-    });
+    const dims = {
+      gameplay: { w: g.width, h: g.height },
+      facecam: fc && fc.width ? { w: fc.width, h: fc.height } : null,
+      chat: chatMedia && chatMedia.width ? { w: chatMedia.width, h: chatMedia.height } : null,
+    };
+    const layers = [];
+    for (const l of L.resolveLayers(pr, dims)) {
+      if (l.type === 'captions') {
+        if (overlay) layers.push({ type: 'captions', media: { path: overlay, width: W, height: H }, src: { x: 0, y: 0, w: W, h: H }, dst: { x: 0, y: 0, w: W, h: H } });
+        continue;
+      }
+      if (!l.src) continue;
+      layers.push({ type: l.type, media: l.type === 'gameplay' ? g : l.type === 'facecam' ? fc : chatMedia, src: l.src, dst: l.dst });
+    }
+    const xml = premiere.buildSequence({ name: base, width: W, height: H, gameplay: g, layers, calibration: P.calibration || null });
     const xmlPath = path.join(outDir, `${base}.xml`);
     fs.writeFileSync(xmlPath, xml);
     const project = {
       name: base,
       format: `${W}x${H}`,
-      split,
-      gameplayRect,
-      files: { gameplay: files.gameplay, facecam: files.facecam, chat: files.chat, overlay, srt, ass, xml: xmlPath, words: words ? wordsFile : null },
-      captions: P.captions,
+      preset: pr,
+      files: { gameplay: files.gameplay, facecam: files.facecam, chat: files.chat, overlay, srt, xml: xmlPath, words: words ? wordsFile : null },
       device,
       status: 'ready',
       updatedAt: Date.now(),
@@ -189,4 +206,4 @@ class PremiereExporter {
   }
 }
 
-module.exports = { PremiereExporter, FORMATS };
+module.exports = { PremiereExporter, FORMATS, layoutLib };

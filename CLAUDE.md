@@ -38,7 +38,7 @@ in the **cloud** (Linux) for small changes. In a cloud session:
 - Gives broad freedom ("mach wie du meinst"), but expects things to really work: test against real VODs/clips.
 
 ## What the app does
-Electron desktop app with three views (title-bar tabs):
+Electron desktop app with five views (title-bar tabs):
 - **Home** — saved projects (thumbnail with the facecam box + clip marks), recent channels, recent downloads.
 - **Browse** — a recreated YouTube (red) / Twitch (purple) channel page: banner, avatar, subscribers, tabs
   (Videos/Streams · Past broadcasts/Highlights/Clips), infinite grid. Picking a video flies its thumbnail into the
@@ -46,8 +46,14 @@ Electron desktop app with three views (title-bar tabs):
 - **Edit** — NLE layout: media bin (left) | player (exactly 16:9 of the height) | clips + export (right), timeline
   below (ruler, filmstrip lane with clips, activity track). Mark clips (drag / I+O / N) → check the ones to export →
   download only those parts fast → `Gameplay.mp4` + `Facecam.mp4` in auto-numbered folders (`DrDonut 70`, …) →
-  optional Topaz-enhanced facecam → optional ready **Premiere sequence** (FCP7 XML, always 1440×1920) with local
-  **captions**.
+  optional Topaz-enhanced facecam → optional ready **Premiere sequence** (FCP7 XML) with local **captions**.
+- **Premiere** (`src/components/studio/`) — the layout designer: full-screen canvas of the vertical frame, layers
+  (gameplay / facecam / chat / captions) to drag, resize, frame and reorder, caption looks, font browser, effect stack,
+  motion, presets. The active preset builds every Premiere sequence. Live mode draws the Edit video; clip mode plays a
+  finished download (`vsfile://`) with its real transcript and can rebuild it ("Apply to clip").
+- **Downloads** — big job cards with the pipeline (`job.phases` / `job.phase`, one color per step, "Clip ready" once
+  `job.filesReady`), earlier downloads from history. The title-bar popup stays.
+Settings, presets, favorite fonts and the output folder live in `%APPDATA%\Vodslice` and survive updates.
 The top field takes a video link (loads it), a channel link (opens the channel) or a name (asks YouTube or Twitch,
 opens the best match, other matches as chips). Installed per-user via NSIS; updates itself from GitHub releases.
 
@@ -93,6 +99,9 @@ electron/              main process (CommonJS, no build step)
   chat.cjs             chat messages of a time range: Twitch VOD / Twitch clip (via its VOD) / YouTube replay
   chatRender.cjs       hidden window renders chat states → PNGs → ffmpeg → transparent Chat.mov (qtrle)
   login.cjs            YouTube/Twitch login: one-time cookie import from the browser (or a cookies.txt)
+  layout.mjs           SHARED with the renderer (ES module): frame sizes, layout presets, layer geometry
+                       (resolveLayers / coverWindow), caption chunks + animation state (captionState), looks, effects
+  fonts.cjs            installed Windows fonts (system + per-user) read from the font files' name/OS2/fvar tables
 src/                   renderer (React 19 + Vite 8, plain JSX)
   App.jsx              shell: tabs, top field (link/channel/name + YouTube/Twitch picker), channel state, projects,
                        morph animation, downloads button, settings
@@ -106,6 +115,13 @@ src/                   renderer (React 19 + Vite 8, plain JSX)
   lib/facecam.js       MediaPipe face detection (WASM, offline) ; lib/camrect.js = border search (pure, testable)
   lib/storyboard.js    storyboard sprite cell → CSS (filmstrip, scrub preview, clip thumbnails)
   chatrender.js        the #chatrender page: canvas drawing of the chat overlay (no React)
+  capsrender.js        the #capsrender page: caption overlay frames for the export (same drawing code as the preview)
+  lib/captionDraw.js   caption drawing on a transparent canvas (fonts, stroke/shadow/glow/box/extrude, animations)
+  lib/compose.js       draws a whole preset (video layers + chat sample + captions) — Premiere tab, player preview
+  lib/fonts.js         the bundled caption fonts (public/fonts, OFL/Apache, licenses in public/fonts/licenses)
+  components/studio/   Studio.jsx (canvas, gestures, snapping, presets, layers, clip mode), Inspector.jsx,
+                       FontPicker.jsx, presetStore.js (settings.studio helpers, finished clips for the preview)
+  components/DownloadsView.jsx   the Downloads tab
   components/KeyMap.jsx  visual QWERTZ keyboard of all hotkeys (Settings + F1 overlay) — keep in sync with Editor keys
   styles.css + styles-v2.css   base styles + the v2 shell/editor/browse/home styles
 public/                models/*.tflite (MediaPipe face detector), icon.png/ico; mediapipe wasm copied at build
@@ -150,16 +166,39 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
 - **Facecam positions over time** (`fcKeys` per source: `[{t, rect}]`) for streamers who move their cam; the
   engine splits facecam export at those times (`facecamPieces` + `exportPieces`).
 
+**Premiere tab / layout presets** (`electron/layout.mjs`, `settings.studio`)
+- A preset = `ratio` + `layers` (bottom first: `{type, on, rect}` in frame fractions; gameplay/facecam also `view`
+  = {zoom, cx, cy} framing; captions = {x, y, w}) + `captions` style. `normalizePreset` fills anything missing.
+  Built-ins are seeded on first start from the old `premiere.split`/`premiere.captions` values.
+- Geometry is computed ONCE in `resolveLayers` and used by the canvas preview and the XML: every video layer shows a
+  window of its media (largest window of the box aspect inside the source region, divided by zoom, centered at cx/cy,
+  clamped). Facecam source region = the Edit facecam box (live) or the whole Facecam.mp4 (export) — same result.
+- The download spec carries a snapshot of the active preset (`spec.studio`) and `spec.chatSize` (chat rendered 1:1
+  at its box size). Rebuilds ("Apply to clip", caption editor, Open in Premiere without XML) use the active preset.
+- Caption overlay: NOT libass any more — the hidden `#capsrender` window draws frames with `lib/captionDraw.js`
+  (the Studio code), only the band the captions can reach, PNG per changed frame (`captionState().key` dedupes static
+  frames), ffmpeg pads the band back to the full frame (`pad=W:H:0:bandY:color=0x00000000`) → qtrle argb at the
+  sequence rate. ~6 s for 8 s of 1-word captions. Canvas state on reused helper canvases must be reset each frame
+  (a stuck `source-in` once made glow/shadow vanish).
+- Fonts: bundled fonts via `src/fonts.css` (@font-face, family names = real names, they shadow installed copies);
+  installed fonts by name. `document.fonts` 'loadingdone' clears the caption layout cache (fallback measurements).
+- `vsfile://media/?p=<path>` serves local video with Range support, only inside the output folder or a known
+  download's folder (Studio clip mode). qtrle .mov can't play in Chromium — chat is a drawn sample in the preview.
+
 **Premiere export** (calibrated in Premiere Pro 2026 with test XMLs — see `release/calibration test/`, not in git)
 - Premiere maps FCP `<center>` as: **Position = sequence center + center × SOURCE clip size** (not sequence size).
   Scale = % of source. Crop filter (percent) is honoured. Stereo audio needs the exploded-track attributes
   (`premiereTrackType="Stereo"`) → lands as one stereo clip on A1.
-- Layout: V1 gameplay (original file, scale + position "cover" of the bottom area, window chosen with the blue
-  box), V2 the pre-cropped `Facecam.mp4` (or `Facecam Enhanced.mp4`) filling the top, **no facecam audio**,
-  V3 caption overlay, A1 gameplay stereo, empty SFX/Music tracks.
-- The sequence is **always 1440×1920** (Tim dropped the 9:16 option). The facecam box stays free: the XML scales
-  `Facecam.mp4` to cover the top area and crops the overflow centered (Crop filter). The editor shows the same
-  composition live (`PremierePreview`, canvas drawn from the playing video) — keep both in sync.
+- `buildSequence`: one video track per visible layer in preset order (bottom first): gameplay = original file
+  (+ its audio, linked; the audio stays even if the gameplay layer is hidden), facecam = pre-cropped `Facecam.mp4`
+  (or Enhanced, **no facecam audio**), chat = `Chat.mov`, captions = full-frame overlay; empty SFX/Music tracks.
+  Uniform scale = box width / window width; position puts the window center on the box center. **Crop filter only on
+  sides whose box edge lies inside the frame** (overflow beyond the frame edge stays, so the clip can still be nudged
+  in Premiere). `buildXml` (old split layout) is a wrapper kept for the calibrated tests.
+- Frame sizes: 9:16 1080×1920, 3:4 1440×1920 (default), 4:5 1536×1920, 1:1 1920×1920. The player PIP
+  (`PremierePreview`) and the Premiere tab draw with `lib/compose.js` — the same geometry as the XML.
+- The old separate "Crop gameplay" export option was removed from the UI (it duplicated the Premiere layout);
+  the engine still supports `spec.cropOn`.
 - **Premiere cannot open an XML from the command line** ("file path does not exist"), so "Open in Premiere"
   imports via its Import dialog with keystrokes (`premiereOpen.cjs`). Needs Premiere running with a project open.
   Codes: OK / NO_PROJECT / NOT_RUNNING (starts Premiere) / NO_FOCUS / NO_DIALOG. Path is always on the clipboard.
@@ -170,8 +209,8 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
   here, and DTW+VAD shifts times — so: tokens + VAD, then `align.cjs` assigns words to speech "islands" in the
   voice-band energy and puts each phrase start exactly on the speech onset (measured: first word 0.59 s = audio).
   Threshold must be relative to the speech level (background noise ~33 dB would otherwise count as speech).
-- Overlay = QuickTime Animation (qtrle, argb) rendered with libass on a transparent canvas — ~18 MB / 25 s
-  (ProRes 4444 would be ~10× bigger). Verified 98.5 % transparent pixels.
+- Overlay = QuickTime Animation (qtrle, argb) on a transparent canvas (see Premiere tab above) — ProRes 4444 would be
+  ~10× bigger. `captions.cjs` (ASS/libass) is only used for the SRT now.
 - Default language German (prompt said so) — DrDonut speaks English → set English in Settings for him.
 
 **Topaz**
@@ -252,7 +291,10 @@ asked to remove the on-screen hints). When you add/change a key, update `KeyMap.
 ## Known gaps / ideas
 - "Open in Premiere" keystroke import was not verified end-to-end by Claude (Tim was using the PC). Import of the
   generated XMLs themselves was verified. Paths with umlauts not yet tested in Premiere.
-- Possible next features Tim might like: caption presets, auto-detect facecam position changes over time,
+- Premiere tab (v1.4.0) was tested in the real app (live + clip mode, all panels, a real Twitch download with chat +
+  whisper + caption overlay); the new layer XMLs were not opened in Premiere yet — the math is the calibrated one.
+- Possible next features Tim might like: emphasis words in captions (manual colors per word), rounded/bordered
+  facecam (needs a pre-rendered mask — FCP XML can't round corners), auto-detect facecam position changes over time,
   YouTube live-chat replay activity (Twitch chat activity exists), a hover frame preview on the timeline.
 - The browse scrapers depend on YouTube/Twitch page structures — if a channel page comes back empty, check
   `youtube.cjs itemsOf/headerOf` against a fresh `ytInitialData` first.

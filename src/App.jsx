@@ -10,6 +10,8 @@ import CaptionsEditor from './components/CaptionsEditor.jsx';
 import { MenuProvider } from './components/ContextMenu.jsx';
 import { KeysOverlay } from './components/KeyMap.jsx';
 import LoginDialog from './components/LoginDialog.jsx';
+import Studio from './components/studio/Studio.jsx';
+import DownloadsView from './components/DownloadsView.jsx';
 import { Icon, Spinner, Kbd } from './components/ui.jsx';
 import { fmtBytes } from './lib/time.js';
 import { ACTIVE } from './components/Jobs.jsx';
@@ -67,7 +69,10 @@ export default function App() {
   const [renaming, setRenaming] = useState(null);
   const [showKeys, setShowKeys] = useState(false);
   const [login, setLogin] = useState(null); // { retry: url | null }
+  const [studioSeen, setStudioSeen] = useState(false);
+  const [studioClip, setStudioClip] = useState(null); // {key, n} — open a downloaded clip in the Premiere tab
   const editor = useRef(null);
+  const getLive = useCallback(() => (editor.current && editor.current.live ? editor.current.live() : null), []);
   const input = useRef(null);
   const browseEl = useRef(null);
   const settingsRef = useRef(null);
@@ -286,8 +291,18 @@ export default function App() {
   });
 
   useEffect(() => {
-    window.__vs = { ...(window.__vs || {}), setView, openChannel, submit, pickVideo, openProject, projects: () => projects, login: () => setLogin({ retry: null }) };
+    window.__vs = { ...(window.__vs || {}), tab: (v) => (v === 'studio' && setStudioSeen(true), setView(v)), openChannel, submit, pickVideo, openProject, projects: () => projects, login: () => setLogin({ retry: null }) };
   });
+
+  const openStudio = () => {
+    setStudioSeen(true);
+    setView('studio');
+  };
+  const openClipInStudio = (job) => {
+    const o = (job.outputs || [])[0];
+    if (o) setStudioClip({ key: `${o.dir}|${o.prefix || ''}`, n: Date.now() });
+    openStudio();
+  };
 
   if (!settings) return <div className="boot" />;
 
@@ -313,6 +328,13 @@ export default function App() {
             </button>
             <button className={view === 'edit' ? 'on' : ''} onClick={() => setView('edit')}>
               <Icon name="scissors" size={15} /> Edit
+            </button>
+            <button className={view === 'studio' ? 'on' : ''} onClick={openStudio} title="Design the vertical video: layout, captions, effects, presets">
+              <Icon name="phone" size={15} /> Premiere
+            </button>
+            <button className={view === 'downloads' ? 'on' : ''} onClick={() => setView('downloads')}>
+              <Icon name="download" size={15} /> Downloads
+              {activeJobs.length > 0 && <span className="tab-badge">{activeJobs.length}</span>}
             </button>
           </nav>
           <div className={`urlbox ${busy ? 'loading' : ''}`}>
@@ -400,8 +422,29 @@ export default function App() {
               onChannel={() => setView('browse')}
               onRenameProject={(p) => p && setRenaming({ id: p.id, name: p.name || '' })}
               onShowKeys={() => setShowKeys(true)}
+              onOpenStudio={openStudio}
             />
           </div>
+          {studioSeen && (
+            <div className={`view v-studio ${view === 'studio' ? 'shown' : ''}`}>
+              <Studio
+                settings={settings}
+                active={view === 'studio'}
+                getLive={getLive}
+                jobs={jobs}
+                history={history}
+                toast={toast}
+                modalOpen={!!showSettings || !!capJob || !!renaming || showKeys || !!login}
+                onGoEdit={() => setView('edit')}
+                openClip={studioClip}
+              />
+            </div>
+          )}
+          {view === 'downloads' && (
+            <div className="view v-downloads shown">
+              <DownloadsView jobs={jobs} history={history} notify={toast} onCaptions={setCapJob} onStudio={openClipInStudio} onClear={() => window.api.clearJobs()} />
+            </div>
+          )}
           {view === 'browse' && (
             <div className="view v-browse shown" ref={browseEl}>
               <Browse
@@ -462,7 +505,7 @@ export default function App() {
         )}
 
         {capJob && <CaptionsEditor job={jobs.find((j) => j.id === capJob.id) || capJob} settings={settings} notify={toast} onClose={() => setCapJob(null)} />}
-        {showSettings && <Settings settings={settings} tools={tools} topaz={topazInfo} section={typeof showSettings === 'string' ? showSettings : null} onClose={() => setShowSettings(false)} onLogin={() => setLogin({ retry: null })} />}
+        {showSettings && <Settings settings={settings} tools={tools} topaz={topazInfo} section={typeof showSettings === 'string' ? showSettings : null} onClose={() => setShowSettings(false)} onLogin={() => setLogin({ retry: null })} onOpenStudio={() => (setShowSettings(false), openStudio())} />}
         {login && (
           <LoginDialog
             settings={settings}

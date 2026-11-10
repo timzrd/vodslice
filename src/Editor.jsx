@@ -11,14 +11,14 @@ import { useMenu } from './components/ContextMenu.jsx';
 import { Icon, Seg, Popover, Spinner, Toggle } from './components/ui.jsx';
 import { fmt } from './lib/time.js';
 import { detectFacecam, sampleTimes } from './lib/facecam.js';
+import { activePreset, presetsOf } from './components/studio/presetStore.js';
+import { chatSizeFor } from '../electron/layout.mjs';
 
 const PALETTE = ['#ffd23f', '#3ddc84', '#39c6ff', '#ff6fae', '#ff9f43', '#a78bfa', '#2dd4bf', '#f87171'];
 const LETTERS = 'abcdefghijklmnopqrstuvwxyz';
 const DEFAULT_BOX = { x: 0.7, y: 0.62, w: 0.28, h: 0.35 };
 const ASPECTS = { '9:16': 9 / 16, '1:1': 1, '4:3': 4 / 3, '16:9': 16 / 9 };
 const RATES = [1, 1.25, 1.5, 2, 3, 4, 8];
-const PW = 1440;
-const PH = 1920;
 
 /** Largest box with the given pixel aspect inside a W×H frame, centered on (cx, cy). */
 function fitCrop(aspect, W, H, cx = 0.5, cy = 0.5) {
@@ -67,7 +67,7 @@ const storable = (inf) => {
  * The editing workspace: media bin | player | clips + export, timeline below.
  * Owns the project state (sources, per-source facecam/crop/Premiere boxes, clips) and autosaves it.
  */
-const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, jobs, onProject, openSettings, onAddMedia, onChannel, channel, modalOpen, onRenameProject, onShowKeys, onLogin }, ref) {
+const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, jobs, onProject, openSettings, onAddMedia, onChannel, channel, modalOpen, onRenameProject, onShowKeys, onLogin, onOpenStudio }, ref) {
   const openMenu = useMenu();
   const [project, setProject] = useState(null); // {id, name, created}
   const [sources, setSources] = useState({});
@@ -89,7 +89,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
   const [span, setSpan] = useState(180);
   const [center, setCenter] = useState(0);
   const [facecamOn, setFacecamOn] = useState(settings.facecam.enabled);
-  const [cropOn, setCropOn] = useState(settings.gameplay.crop === 'crop' || settings.gameplay.crop === '9x16');
+  const [cropOn, setCropOn] = useState(false); // old "Crop gameplay" export (replaced by the Premiere tab layout)
   const [cropAspect, setCropAspect] = useState(ASPECTS[settings.gameplay.aspect] ? settings.gameplay.aspect : '9:16');
   const [rate, setRate] = useState(1);
   const [detecting, setDetecting] = useState(null);
@@ -780,22 +780,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
   // ---------- Premiere layout (1440×1920: facecam top, gameplay window below) ----------
   const prem = settings.premiere;
   const premiereOn = !!prem.enabled;
-  const topH = Math.round(PH * prem.split);
-  const botAspect = PW / (PH - topH);
-  const premRect = info ? ss.premRect || (settings.premiereLayouts || {})[info.channelKey] || fitCrop(botAspect, info.width, info.height) : null;
-  const onPremRect = useCallback(
-    (rect, final) => {
-      if (!info) return;
-      patchSrc(info.cacheId, { premRect: rect });
-      if (final) window.api.replaceSetting('premiereLayouts', { ...(settingsRef.current.premiereLayouts || {}), [info.channelKey]: rect });
-    },
-    [info, patchSrc]
-  );
-  useEffect(() => {
-    if (!info || !premRect) return;
-    const r = premRect;
-    if (Math.abs((r.w * info.width) / (r.h * info.height) / botAspect - 1) > 0.02) patchSrc(info.cacheId, { premRect: fitCrop(botAspect, info.width, info.height, r.x + r.w / 2, r.y + r.h / 2) });
-  }, [botAspect, info && info.cacheId]); // eslint-disable-line
+  const preset = useMemo(() => activePreset(settings), [settings.studio, settings.premiere]); // eslint-disable-line
 
   // ---------- selection for export + naming ----------
   const selected = useMemo(() => clips.filter((c) => c.on !== false && sources[c.src]), [clips, sources]);
@@ -888,7 +873,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
         cropAspect: ASPECTS[cropAspect] || 9 / 16,
         enhance: enhanceOn ? tzPreset : null,
         chat: !!(s.chat && s.chat.enabled),
-        premiereRect: premiereOn && !cropOn && sources[first] ? (srcState[first] && srcState[first].premRect) || (s.premiereLayouts || {})[sources[first].channelKey] || null : null,
+        // the Premiere sequence is built from a snapshot of the active Premiere-tab preset
+        studio: premiereOn ? activePreset(s) : null,
+        chatSize: premiereOn ? chatSizeFor(activePreset(s)) : null,
         qualityLabel: q ? `${q.label} ${q.codec}` : '',
         startNumber: startNumber || null,
         baseDir: s.output.baseDir,
@@ -1124,6 +1111,17 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
 
   useImperativeHandle(ref, () => ({
     load,
+    /** what the Premiere tab draws in live mode */
+    live: () => ({
+      video: player.current && player.current.el,
+      info: info && !info.stale ? info : null,
+      facecamRect: facecamOn && activeKey ? activeKey.rect : null,
+      playing,
+      time: player.current ? player.current.time : playhead,
+      duration,
+      toggle: () => player.current && player.current.toggle(),
+      seek: (t) => seekScrub(t),
+    }),
     flush() {
       clearTimeout(saveTimer.current);
       const snap = snapRef.current();
@@ -1157,7 +1155,6 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
       const act = p.activeSrc && srcs[p.activeSrc] ? p.activeSrc : ord[0] || null;
       setActiveSrc(act);
       if (typeof p.facecamOn === 'boolean') setFacecamOn(p.facecamOn);
-      if (typeof p.cropOn === 'boolean') setCropOn(p.cropOn);
       if (p.cropAspect) setCropAspect(p.cropAspect);
       if (p.clipMode) setClipMode(p.clipMode);
       const t0 = p.playhead || 0;
@@ -1213,19 +1210,15 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
 
   // ---------- render ----------
   const facecam = { enabled: facecamOn, rect: activeKey ? activeKey.rect : null, confidence: ss.confidence };
-  const crop = cropOn
-    ? { enabled: true, rect: cropRect, aspect: aspectNum, label: cropAspect }
-    : premiereOn && premRect
-      ? { enabled: true, rect: premRect, aspect: botAspect, label: '· PREMIERE BOTTOM', premiere: true }
-      : { enabled: false };
+  const crop = cropOn ? { enabled: true, rect: cropRect, aspect: aspectNum, label: cropAspect } : { enabled: false };
   const segInPlayer = activeSeg && activeSeg.src === activeSrc;
   const initialTime = segInPlayer ? activeSeg.start : playhead || null;
-  const showPip = premiereOn && !cropOn && settings.ui.pipPreview !== false && info && !info.stale;
+  const showPip = active && premiereOn && settings.ui.pipPreview !== false && info && !info.stale;
   const getVideo = useCallback(() => player.current && player.current.el, []);
   // what the selected sources will really produce (a facecam file needs a box)
   const fcReady = facecamOn && (selSrcs.length ? selSrcs : activeSrc ? [activeSrc] : []).some((id) => srcState[id] && srcState[id].fcKeys && srcState[id].fcKeys.length);
   const chatOn = !!(settings.chat && settings.chat.enabled);
-  const files = `${settings.output.gameplayName}${cropOn ? ` ${cropAspect}` : ''}${fcReady ? ` + ${settings.output.facecamName}${enhanceOn ? ' (enhanced)' : ''}` : ''}${chatOn ? ' + Chat' : ''}${premiereOn ? ' + Premiere' : ''}`;
+  const files = `${settings.output.gameplayName}${fcReady ? ` + ${settings.output.facecamName}${enhanceOn ? ' (enhanced)' : ''}` : ''}${chatOn ? ' + Chat' : ''}${premiereOn ? ' + Premiere' : ''}`;
 
   const folderCard = (close) => (
     <div className="pop-card">
@@ -1331,10 +1324,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
     enhanceOn,
     tzLabel,
     premiereOn,
-    cropOn,
-    setCropOn,
-    cropAspect,
-    changeAspect,
+    preset,
+    presets: presetsOf(settings),
+    onOpenStudio,
     openSettings,
     outName,
     folderCard,
@@ -1378,7 +1370,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
           <label className="row between">
             <span>
               <b>Premiere preview</b>
-              <em>Live 1440×1920 view while the Premiere layout is on</em>
+              <em>Small live view of the Premiere-tab layout while “Premiere sequence” is on</em>
             </span>
             <Toggle checked={settings.ui.pipPreview !== false} onChange={(v) => window.api.setSettings({ ui: { pipPreview: v } })} />
           </label>
@@ -1423,7 +1415,7 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
               facecam={facecam}
               onFacecamRect={onFacecamRect}
               crop={crop}
-              onCropRect={crop.premiere ? onPremRect : onCropRect}
+              onCropRect={onCropRect}
               editBoxes
               aspectLock={aspectLock}
               onTime={onTime}
@@ -1482,9 +1474,9 @@ const Editor = forwardRef(function Editor({ settings, active, toast, topazInfo, 
                 <PremierePreview
                   getVideo={getVideo}
                   facecamRect={facecamOn && activeKey ? activeKey.rect : null}
-                  gameplayRect={premRect}
-                  split={prem.split}
-                  captions={prem.captions}
+                  preset={preset}
+                  sample={settings.studio.sample}
+                  onOpen={onOpenStudio}
                   height={Math.max(150, Math.min(300, Math.round(((layout.playerW || 800) * 9) / 16 / 2.4)))}
                   onClose={() => window.api.setSettings({ ui: { pipPreview: false } })}
                 />

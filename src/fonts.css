@@ -1,0 +1,23 @@
+/* Caption fonts bundled with Vodslice (SIL OFL 1.1 / Apache 2.0, see public/fonts/licenses). */
+@font-face { font-family: 'Montserrat'; src: url('/fonts/Montserrat.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Anton'; src: url('/fonts/Anton.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Bebas Neue'; src: url('/fonts/BebasNeue.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Luckiest Guy'; src: url('/fonts/LuckiestGuy.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Bangers'; src: url('/fonts/Bangers.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('/fonts/Poppins-Bold.ttf') format('truetype'); font-weight: 700; font-style: normal; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('/fonts/Poppins-ExtraBold.ttf') format('truetype'); font-weight: 800; font-style: normal; font-display: block; }
+@font-face { font-family: 'Poppins'; src: url('/fonts/Poppins-Black.ttf') format('truetype'); font-weight: 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Archivo Black'; src: url('/fonts/ArchivoBlack.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Oswald'; src: url('/fonts/Oswald.ttf') format('truetype'); font-weight: 200 700; font-style: normal; font-display: block; }
+@font-face { font-family: 'Lilita One'; src: url('/fonts/LilitaOne.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Titan One'; src: url('/fonts/TitanOne.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Permanent Marker'; src: url('/fonts/PermanentMarker.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Rubik'; src: url('/fonts/Rubik.ttf') format('truetype'); font-weight: 300 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Russo One'; src: url('/fonts/RussoOne.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Bowlby One'; src: url('/fonts/BowlbyOne.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/BarlowCondensed-ExtraBold.ttf') format('truetype'); font-weight: 800; font-style: normal; font-display: block; }
+@font-face { font-family: 'Barlow Condensed'; src: url('/fonts/BarlowCondensed-Black.ttf') format('truetype'); font-weight: 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Fredoka'; src: url('/fonts/Fredoka.ttf') format('truetype'); font-weight: 300 700; font-style: normal; font-display: block; }
+@font-face { font-family: 'Chewy'; src: url('/fonts/Chewy.ttf') format('truetype'); font-weight: 400; font-style: normal; font-display: block; }
+@font-face { font-family: 'Kanit'; src: url('/fonts/Kanit-Black.ttf') format('truetype'); font-weight: 900; font-style: normal; font-display: block; }
+@font-face { font-family: 'Kanit'; src: url('/fonts/Kanit-ExtraBoldItalic.ttf') format('truetype'); font-weight: 800; font-style: italic; font-display: block; }

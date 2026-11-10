@@ -2,6 +2,7 @@
 const path = require('node:path');
 const fs = require('node:fs');
 const { pathToFileURL } = require('node:url');
+const { Readable } = require('node:stream');
 const { Store } = require('./store.cjs');
 const { Tools } = require('./tools.cjs');
 const { Engine } = require('./engine.cjs');
@@ -11,7 +12,8 @@ const naming = require('./naming.cjs');
 const topaz = require('./topaz.cjs');
 const updater = require('./updater.cjs');
 const { Whisper } = require('./whisper.cjs');
-const { PremiereExporter } = require('./premiereExport.cjs');
+const { PremiereExporter, layoutLib } = require('./premiereExport.cjs');
+const { listFonts } = require('./fonts.cjs');
 const { importIntoPremiere } = require('./premiereOpen.cjs');
 const { parseInput } = require('./links.cjs');
 const youtube = require('./youtube.cjs');
@@ -43,6 +45,7 @@ if (!process.env.VODSLICE_TEST_SCRIPT && !app.requestSingleInstanceLock()) {
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true } },
   { scheme: 'vsproxy', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, bypassCSP: true } },
+  { scheme: 'vsfile', privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true, bypassCSP: true } },
 ]);
 
 let store;
@@ -415,7 +418,7 @@ function registerIpc() {
   ipcMain.handle('premiere:build', async (e, o) => {
     const send = (label, p) => broadcast('premiere:progress', { dir: o.dir, label, p });
     try {
-      const proj = await exporter.build(o.dir, { name: o.name, prefix: o.prefix || '', gameplayRect: o.gameplayRect || null, reuseTranscript: o.reuse !== false, onStage: send });
+      const proj = await exporter.build(o.dir, { name: o.name, prefix: o.prefix || '', preset: o.preset || null, reuseTranscript: o.reuse !== false, onStage: send });
       send('Ready', 1);
       return { ok: true, project: proj };
     } catch (err) {
@@ -423,6 +426,7 @@ function registerIpc() {
       return { ok: false, error: err.message };
     }
   });
+  ipcMain.handle('fonts:list', () => listFonts());
   ipcMain.handle('premiere:open', async (_e, xml) => {
     clipboard.writeText(xml);
     return importIntoPremiere(xml);
@@ -497,6 +501,16 @@ function runTestScript(file) {
   });
 }
 
+/** Media the Studio may play: video files inside the output folder or in a known download's folder. */
+function allowedMedia(file) {
+  if (!file || !/\.(mp4|mov|m4a|mkv|webm)$/i.test(file) || !path.isAbsolute(file)) return false;
+  const f = path.resolve(file).toLowerCase();
+  const under = (dir) => dir && f.startsWith(path.resolve(dir).toLowerCase() + path.sep);
+  if (under(store.get().output.baseDir)) return true;
+  const dirs = [...engine.list(), ...store.history].flatMap((j) => (j.outputs || []).map((o) => o.dir));
+  return dirs.some(under);
+}
+
 app.whenReady().then(async () => {
   const userData = app.getPath('userData');
   store = new Store(userData);
@@ -508,6 +522,12 @@ app.whenReady().then(async () => {
   exporter = new PremiereExporter({ tools, store, whisper });
   engine.premiere = exporter;
   engine.chatRenderer = new ChatRenderer({ preload: path.join(__dirname, 'preload.cjs'), url: 'app://bundle/index.html' });
+  exporter.overlayRenderer = engine.chatRenderer; // caption overlays are drawn by the same hidden-window renderer
+  // first start with the Studio: built-in layout presets (seeded from the old Premiere settings)
+  layoutLib().then((L) => {
+    const st = store.get().studio;
+    if (!st.presets || !st.presets.length) store.patch({ studio: { presets: L.builtInPresets(store.get().premiere), active: 'split' } });
+  });
   engine.on('job', (j) => broadcast('job', j));
   engine.on('removed', (id) => broadcast('job:removed', id));
   engine.on('done', notifyDone);
@@ -545,6 +565,31 @@ app.whenReady().then(async () => {
     } catch (e) {
       return new Response(String(e.message), { status: 502 });
     }
+  });
+
+  // Local clip files for the Studio preview (only video files inside the output folder or of known downloads).
+  protocol.handle('vsfile', async (req) => {
+    const file = new URL(req.url).searchParams.get('p') || '';
+    if (!allowedMedia(file)) return new Response('Forbidden', { status: 403 });
+    let st;
+    try {
+      st = fs.statSync(file);
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+    const type = /\.mov$/i.test(file) ? 'video/quicktime' : /\.m4a$/i.test(file) ? 'audio/mp4' : /\.webm$/i.test(file) ? 'video/webm' : 'video/mp4';
+    const m = /bytes=(\d*)-(\d*)/.exec(req.headers.get('range') || '');
+    const head = { 'content-type': type, 'accept-ranges': 'bytes', 'access-control-allow-origin': '*' };
+    if (m) {
+      const start = m[1] ? Number(m[1]) : Math.max(0, st.size - Number(m[2] || 0));
+      const end = m[1] && m[2] ? Math.min(st.size - 1, Number(m[2])) : st.size - 1;
+      if (start >= st.size) return new Response('', { status: 416, headers: { 'content-range': `bytes */${st.size}` } });
+      return new Response(Readable.toWeb(fs.createReadStream(file, { start, end })), {
+        status: 206,
+        headers: { ...head, 'content-range': `bytes ${start}-${end}/${st.size}`, 'content-length': String(end - start + 1) },
+      });
+    }
+    return new Response(Readable.toWeb(fs.createReadStream(file)), { status: 200, headers: { ...head, 'content-length': String(st.size) } });
   });
 
   // Media CDNs: allow the app:// page to read HLS playlists/segments (hls.js uses XHR).

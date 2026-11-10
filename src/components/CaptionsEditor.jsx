@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Icon, Seg, Toggle, Spinner } from './ui.jsx';
 import { chunk, fmtTc } from '../lib/captions.js';
+import { activePreset, updateActivePreset } from './studio/presetStore.js';
 
 /**
  * Fix names/slang in the transcript and tune the caption rhythm, then rebuild SRT/overlay/XML —
@@ -12,8 +13,19 @@ export default function CaptionsEditor({ job, settings, onClose, notify }) {
   const out = outs[tab];
   const [words, setWords] = useState(null);
   const [busy, setBusy] = useState(null);
-  const c = settings.premiere.captions;
-  const setC = (patch) => window.api.setSettings({ premiere: { captions: patch } });
+  // rhythm lives in the active Premiere-tab preset, the timing offset in the Premiere settings
+  const preset = activePreset(settings);
+  const c = { ...settings.premiere.captions, maxWords: preset.captions.words, maxChars: preset.captions.maxChars, uppercase: preset.captions.caps === 'upper' };
+  const setC = (patch) => {
+    if ('offsetMs' in patch) window.api.setSettings({ premiere: { captions: { offsetMs: patch.offsetMs } } });
+    if ('maxWords' in patch || 'maxChars' in patch || 'uppercase' in patch)
+      updateActivePreset(settings, (p) => {
+        if ('maxWords' in patch) p.captions.words = patch.maxWords;
+        if ('maxChars' in patch) p.captions.maxChars = patch.maxChars;
+        if ('uppercase' in patch) p.captions.caps = patch.uppercase ? 'upper' : 'none';
+        return p;
+      });
+  };
 
   useEffect(() => {
     if (!out) return;

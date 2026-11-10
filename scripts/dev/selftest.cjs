@@ -133,7 +133,7 @@ test('hls: playlist parsing with init segment and byte ranges', () => {
   assert.deepEqual(selectSegments(pl, 7, 13).map((s) => s.t), [6, 12]);
 });
 
-test('premiere: any facecam ratio is cropped to the top area', () => {
+test('premiere: any facecam ratio is cropped to its area (only on sides inside the frame)', () => {
   const { buildXml } = req('premiere.cjs');
   const g = { path: path.join(os.tmpdir(), 'g.mp4'), width: 1920, height: 1080, fps: 60, duration: 5, hasAudio: true };
   const fc = { path: path.join(os.tmpdir(), 'f.mp4'), width: 640, height: 360 }; // 16:9 cam, top area is 1440×640 (9:4)
@@ -141,8 +141,10 @@ test('premiere: any facecam ratio is cropped to the top area', () => {
   const crop = xml.match(/<effectid>crop<\/effectid>[\s\S]*?<\/effect>/);
   assert.ok(crop, 'facecam gets a crop filter');
   const v = (id) => Number(new RegExp(`<parameterid>${id}</parameterid><name>${id}</name><valuemin>0</valuemin><valuemax>100</valuemax><value>([\\d.]+)`).exec(crop[0])[1]);
-  // scaled to 1440 wide -> 810 high, 170 px too much -> 85 px (10.494 %) off top and bottom
-  assert.ok(Math.abs(v('top') - 10.494) < 0.01 && Math.abs(v('bottom') - 10.494) < 0.01);
+  // scaled to 1440 wide -> 810 high, 170 px too much -> 85 px (10.494 %) over each edge; only the bottom edge lies
+  // inside the frame (the top overflow is outside the frame and stays, so the clip can be nudged in Premiere)
+  assert.ok(Math.abs(v('bottom') - 10.494) < 0.01, 'bottom ' + v('bottom'));
+  assert.equal(v('top'), 0);
   assert.equal(v('left'), 0);
 });
 
@@ -254,6 +256,85 @@ test('naming: template + sanitize', () => {
   const { render, sanitize } = req('naming.cjs');
   assert.equal(render('{channel} {n}', { channel: 'DrDonut', n: 70 }), 'DrDonut 70');
   assert.equal(sanitize('Dr: Donut?*'), 'Dr Donut');
+});
+
+// ---------------- Premiere tab: layout presets, geometry, captions ----------------
+const layoutLib = () => import(require('node:url').pathToFileURL(path.join(ROOT, 'electron', 'layout.mjs')).href);
+
+test('layout: presets normalize, cover windows keep the box aspect, chat renders at its box size', async () => {
+  const L = await layoutLib();
+  const p = L.normalizePreset({ id: 'x', name: 'X', ratio: '3:4', layers: [{ type: 'facecam', rect: { x: 0, y: 0, w: 1, h: 0.5 } }] });
+  assert.deepEqual(p.layers.map((l) => l.type).sort(), ['captions', 'chat', 'facecam', 'gameplay']);
+  assert.equal(p.layers.at(-1).type, 'captions', 'missing captions layer goes on top');
+  const split = L.normalizePreset(L.builtInPresets({ split: 1 / 3 })[0]);
+  const res = L.resolveLayers(split, { gameplay: { w: 1920, h: 1080 }, facecam: { w: 1920, h: 1080, box: { x: 0.75, y: 0.7, w: 0.25, h: 0.3 } } });
+  const fc = res.find((l) => l.type === 'facecam');
+  // the window inside the facecam box has the aspect of the facecam area (1440×640)
+  assert.ok(Math.abs(fc.src.w / fc.src.h - 1440 / 640) < 1e-6);
+  assert.ok(fc.src.x >= 1440 - 1e-6 && fc.src.y >= 756 - 1e-6 && fc.src.x + fc.src.w <= 1920 + 1e-6, 'stays inside the cam box');
+  const gp = res.find((l) => l.type === 'gameplay');
+  assert.equal(Math.round(gp.src.h), 1080);
+  // zoom 2 halves the window, panning is clamped to the source
+  split.layers.find((l) => l.type === 'gameplay').view = { zoom: 2, cx: 5, cy: 0.5 };
+  const z = L.resolveLayers(split, { gameplay: { w: 1920, h: 1080 } }).find((l) => l.type === 'gameplay');
+  assert.ok(Math.abs(z.src.h - 540) < 1e-6 && Math.abs(z.src.x + z.src.w - 1920) < 1e-6);
+  const chat = L.normalizePreset({ ...split, layers: split.layers.map((l) => (l.type === 'chat' ? { ...l, on: true, rect: { x: 0, y: 0.5, w: 0.36, h: 0.34 } } : l)) });
+  assert.deepEqual(L.chatSizeFor(chat), { width: 518, height: 652 });
+});
+
+test('premiere: layer sequence — z-order = track order, crop only where a layer edge is inside the frame', async () => {
+  const L = await layoutLib();
+  const { buildSequence } = req('premiere.cjs');
+  const overlap = L.normalizePreset(L.builtInPresets()[1]); // gameplay 0.27..1, facecam 0..0.36 on top
+  const g = { path: path.join(os.tmpdir(), 'g.mp4'), width: 1920, height: 1080, fps: 60, duration: 5, hasAudio: true };
+  const f = { path: path.join(os.tmpdir(), 'f.mp4'), width: 640, height: 360 };
+  const layers = L.resolveLayers(overlap, { gameplay: { w: 1920, h: 1080 }, facecam: { w: 640, h: 360 } })
+    .filter((l) => l.src)
+    .map((l) => ({ type: l.type, media: l.type === 'gameplay' ? g : f, src: l.src, dst: l.dst }));
+  const xml = buildSequence({ name: 'T', width: 1440, height: 1920, gameplay: g, layers });
+  const names = [...xml.matchAll(/<track MZ\.TrackName="([^"]+)">/g)].map((m) => m[1]);
+  assert.deepEqual(names.slice(0, 2), ['Gameplay', 'Facecam'], 'facecam above the gameplay');
+  const clipOf = (name) => xml.slice(xml.indexOf(`MZ.TrackName="${name}"`), xml.indexOf('</track>', xml.indexOf(`MZ.TrackName="${name}"`)));
+  const crop = (name, side) => {
+    const m = new RegExp(`<parameterid>${side}</parameterid><name>${side}</name><valuemin>0</valuemin><valuemax>100</valuemax><value>([\\d.]+)`).exec(clipOf(name));
+    return m ? Number(m[1]) : 0;
+  };
+  assert.equal(crop('Facecam', 'top'), 0, 'top edge is the frame edge');
+  assert.ok(crop('Facecam', 'bottom') > 0, 'bottom edge is inside the frame');
+  assert.equal(crop('Gameplay', 'bottom'), 0);
+  assert.match(clipOf('Gameplay'), /<linkclipref>clipitem-v1<\/linkclipref><mediatype>video<\/mediatype><trackindex>1<\/trackindex>/);
+  // gameplay audio stays even when its video layer is hidden
+  const noVideo = buildSequence({ name: 'T', width: 1440, height: 1920, gameplay: g, layers: layers.filter((l) => l.type !== 'gameplay') });
+  assert.match(noVideo, /<file id="file-gameplay">/);
+  assert.match(noVideo, /premiereTrackType="Stereo"/);
+});
+
+test('captions: word chunks, word-by-word reveal, static frames share a key, out animation only before a pause', async () => {
+  const L = await layoutLib();
+  const words = [
+    { w: 'okay', start: 0.5, end: 0.8 },
+    { w: 'this', start: 0.8, end: 1.0 },
+    { w: 'is', start: 1.0, end: 1.2 },
+    { w: 'insane!', start: 1.2, end: 1.8 },
+    { w: 'look', start: 3, end: 3.3 },
+  ];
+  const chunks = L.chunkWords(words, { words: 3, maxChars: 30 });
+  assert.deepEqual(chunks.map((c) => c.words.map((w) => w.w).join(' ')), ['okay this is', 'insane!', 'look']);
+  const cap = L.normalizePreset({}).captions;
+  cap.anim = { in: 'pop', out: 'fade', mode: 'word', speed: 1 };
+  const st = L.captionState(chunks, 0.9, cap);
+  assert.deepEqual(st.words.map((w) => w.visible), [true, true, false], 'third word not spoken yet');
+  assert.equal(st.active, 1);
+  assert.equal(st.key, null, 'second word still popping in');
+  const a = L.captionState(chunks, 0.75, { ...cap, anim: { ...cap.anim, mode: 'caption' } });
+  const b = L.captionState(chunks, 0.78, { ...cap, anim: { ...cap.anim, mode: 'caption' } });
+  assert.ok(a.key && a.key === b.key, 'static frames are deduplicated');
+  // "insane!" is followed by a pause -> fades out after its end; "okay this is" is followed directly -> no fade
+  assert.equal(L.captionState(chunks, 1.9, cap).index, 1);
+  assert.ok(L.captionState(chunks, 1.9, cap).group.a < 1);
+  assert.equal(L.captionState(chunks, 1.19, cap).index, 0);
+  assert.equal(L.captionText('insane!,', cap), 'INSANE!');
+  assert.equal(L.captionText('so,', { ...cap, caps: 'none' }), 'so');
 });
 
 (async () => {

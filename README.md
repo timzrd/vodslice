@@ -14,7 +14,7 @@ updates itself from this repository's releases.
 
 ## Features
 
-- **Home / Browse / Edit** – projects are saved automatically (facecam box, clips, playhead) and listed on Home.
+- **Home / Browse / Edit / Premiere / Downloads** – projects are saved automatically (facecam box, clips, playhead) and listed on Home.
   Type a streamer's name in the top bar, pick YouTube or Twitch, and browse a recreated channel page (banner,
   subscribers, Videos/Streams or Past broadcasts/Highlights/Clips, endless grid). Click a stream and it flies
   into the editor.
@@ -49,7 +49,6 @@ updates itself from this repository's releases.
   to set start/end — the preview jumps to that frame and shows an IN/OUT timecode. Ctrl+Z / Ctrl+Y undo/redo.
 - **Twitch clips** – paste clip links (or use *Add link*) to collect them in the list next to VOD clips;
   download each into its own folder or merge everything into one video (mixed sources are normalized).
-- **Crop window** – 9:16, 1:1, 4:3 or 16:9, resizable, snaps to the frame center (Alt = free).
 - **Facecam positions over time** – streamer moved the cam? Add a new position at the playhead (person+ button);
   each position is used from its time on (diamond markers on the progress bar, right-click to remove).
   Hold Shift while resizing the box to keep its ratio.
@@ -57,25 +56,53 @@ updates itself from this repository's releases.
   (model, scale, auto/manual strengths, recover detail, grain). Uses Topaz's own bundled ffmpeg; progress shows
   in Downloads and the mini overlay.
 - **Playback speed** – 1×–8× (Shift+. / Shift+,), L = Premiere-style shuttle (play, faster), K = stop.
+- **Downloads tab** – every running and finished download with its pipeline (Download → Cut → Chat → Enhance →
+  Captions + Premiere), each step in its own color; "Clip ready" shows as soon as the files exist while Topaz or
+  the captions are still working. Earlier downloads are listed too. The small panel in the title bar stays.
 - **Right-click** a clip in the lane or the list to delete it; drag single files (Gameplay / Facecam /
   Enhanced) from Downloads straight into Premiere.
 - **Mini overlay** – always-on-top progress window; drag finished files straight into your editor.
 - **Self-maintaining tools** – private copies of yt-dlp, FFmpeg and Deno (yt-dlp's JS runtime for YouTube)
   in `%APPDATA%\Vodslice\bin`, auto-updated. No PATH or registry setup needed.
 
+## Premiere tab (layout + captions)
+
+Design the vertical video once, save it as a preset, and every download gets a Premiere sequence that looks exactly
+like the canvas:
+
+- **Full-screen canvas** with the live video from Edit (or a downloaded clip with its real files + transcript).
+  Drag and resize gameplay, facecam, chat and captions; they snap to edges, centers and each other (Alt = free,
+  Shift = keep ratio). Layers can overlap — e.g. the facecam over the top of the gameplay — and are reordered in the
+  layer list (that order becomes the Premiere track order).
+- **Framing** – double-click gameplay or facecam to choose which part fills its box (pan + zoom, the rest of the
+  source is shown dimmed). The facecam box from Edit can be any size: it is always scaled to fill its layout box.
+- **Presets** – Split, Cam over gameplay, Full gameplay + cam, Big cam, Shorts split (9:16) to start from; duplicate,
+  rename, reset. Formats 9:16 (1080×1920), 3:4 (1440×1920), 4:5, 1:1. Safe-zone overlays for TikTok, Shorts, Reels.
+- **Captions** – looks (Punch, Clean, Neon, Boxed, Highlight, Comic, Gamer, Soft), a font browser that shows every
+  installed font plus 18 bundled caption fonts with a sample word (search, favorites, ↑/↓ previews live on the
+  video), weight, size, case, letter spacing, spoken-word highlight (color / box / grow), words per caption.
+- **Text effects** as a stack — stroke, drop shadow, deep glow, background box, 3D extrude — drag one from the
+  library onto the video or add it in the Effects tab; each with its own settings, order and on/off.
+- **Motion** – in: fade, pop, bounce, rise, slide, zoom, blur; out: fade, sink, shrink, blur; whole caption or
+  word by word; speed.
+- Undo/redo (Ctrl+Z / Ctrl+Y), arrows nudge, Tab cycles layers, Space plays.
+
 ## Premiere export
 
-After a download (toggle **Premiere sequence** in the export panel) Vodslice builds `premiere/` in the clip folder:
-`<clip>.xml` (FCP7 XML → vertical 1440×1920 sequence: V1 gameplay filling the bottom, V2 facecam on top without
-audio — any box ratio, cropped to fit —, V3 animated captions with alpha, A1 gameplay audio, empty SFX/Music
-tracks), `<clip>.srt`, `<clip>.ass`, `<clip>_captions.mov` and `project.json`. While the option is on, a live
-1440×1920 preview runs in the corner of the player.
+After a download (toggle **Premiere sequence** in the export panel) Vodslice builds `premiere/` in the clip folder
+with the active preset: `<clip>.xml` (FCP7 XML → vertical sequence, one video track per layer in layer order,
+gameplay audio on A1, empty SFX/Music tracks), `<clip>.srt`, `<clip>_captions.mov` (animated captions with alpha,
+drawn by the same code as the Premiere tab) and `project.json`. With the chat layer on, `Chat.mov` is rendered at
+the exact size of its box. A small live view of the layout runs in the corner of the player (click it to open the
+Premiere tab).
 
 - **Open in Premiere** imports the XML into the open Premiere project (Premiere can't open XML from the command line,
   so Vodslice uses Premiere's Import dialog; the path is also on the clipboard).
 - Captions are transcribed locally with whisper.cpp (CUDA build on NVIDIA, CPU otherwise, Silero VAD). Word starts
   are snapped to the real speech onsets in the audio, so captions appear exactly when someone talks.
 - The caption editor (pencil in Downloads) fixes words and caption rhythm and rebuilds without transcribing again.
+  "Preview layout" opens a downloaded clip in the Premiere tab; **Apply to clip** rebuilds it with the current preset.
+- Settings, presets, favorite fonts and the output folder live in `%APPDATA%\Vodslice` and survive updates.
 - Position math was calibrated in Premiere Pro 2026: FCP `center` = offset from the sequence center in units of
   the source clip size.
 

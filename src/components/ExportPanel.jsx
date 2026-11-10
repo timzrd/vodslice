@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Icon, Seg, Toggle, Spinner, Kbd, Popover } from './ui.jsx';
 import { fmt, fmtShort, fmtBytes } from '../lib/time.js';
 
-const ASPECTS = ['9:16', '1:1', '4:3', '16:9'];
+import { frameSize } from '../../electron/layout.mjs';
+import { updateActivePreset } from './studio/presetStore.js';
 
 /** One export option: icon, label, summary, switch; click the row to show its details. */
 function Opt({ id, open, setOpen, icon, label, summary, on, onToggle, children, busy, disabled, title }) {
@@ -28,7 +29,7 @@ function Opt({ id, open, setOpen, icon, label, summary, on, onToggle, children, 
 export default function ExportPanel({ x }) {
   const [open, setOpen] = useState(null);
   const s = x.settings;
-  const prem = s.premiere;
+  const capsOn = !!(x.preset && x.preset.layers.find((l) => l.type === 'captions' && l.on));
   const tz = s.topaz;
   const n = x.selected.length;
   const canDl = n > 0;
@@ -124,33 +125,28 @@ export default function ExportPanel({ x }) {
           setOpen={setOpen}
           icon="film"
           label="Premiere sequence"
-          summary={x.premiereOn ? `1440×1920${prem.captions.enabled ? ' · captions' : ''} · blue box = gameplay` : 'Vertical edit + captions, ready to open'}
+          summary={x.premiereOn ? `${x.preset.name} · ${frameSize(x.preset.ratio).join('×')}${capsOn ? ' · captions' : ''}` : 'Vertical edit + captions, ready to open'}
           on={x.premiereOn}
           onToggle={(v) => window.api.setSettings({ premiere: { enabled: v } })}
-          title="Build captions + a vertical Premiere sequence after the download"
+          title="Build captions + a vertical Premiere sequence after the download (layout from the Premiere tab)"
         >
-          <div className="pc-row">
-            <span className="pc-label">Facecam height · {Math.round(prem.split * 100)}%</span>
-            <input type="range" min="0.2" max="0.5" step="0.01" value={prem.split} onChange={(e) => window.api.setSettings({ premiere: { split: Number(e.target.value) } })} />
-          </div>
-          <div className="pc-row two">
-            <label className="row">
-              <span className="pc-label">Captions</span>
-              <Toggle checked={prem.captions.enabled} onChange={(v) => window.api.setSettings({ premiere: { captions: { enabled: v } } })} />
-            </label>
-            <label className="row">
-              <span className="pc-label">Words</span>
-              <Seg size="sm" value={prem.captions.maxWords} onChange={(v) => window.api.setSettings({ premiere: { captions: { maxWords: v } } })} options={[1, 2, 3, 4].map((k) => ({ value: k, label: String(k) }))} />
-            </label>
+          <span className="pc-label">Layout preset</span>
+          <div className="preset-chips">
+            {x.presets.map((p) => (
+              <button key={p.id} className={`chip sm ${p.id === x.preset.id ? 'on' : ''}`} onClick={() => window.api.setSettings({ studio: { active: p.id } })}>
+                {p.name}
+                <span className="muted">{p.ratio}</span>
+              </button>
+            ))}
           </div>
           <label className="row between">
-            <span className="pc-label">Live preview in the player</span>
-            <Toggle checked={s.ui.pipPreview !== false} onChange={(v) => window.api.setSettings({ ui: { pipPreview: v } })} />
+            <span className="pc-label">Captions</span>
+            <Toggle checked={capsOn} onChange={(v) => updateActivePreset(s, (p) => ((p.layers.find((l) => l.type === 'captions').on = v), p))} />
           </label>
-          <p className="pc-hint">Any facecam box works — Premiere crops it to the top area. Drag the blue box to choose the gameplay part.</p>
-          <button className="btn sm full" onClick={() => x.openSettings('premiere')}>
-            <Icon name="settings" size={13} /> Caption style & more
+          <button className="btn sm full primary" onClick={() => x.onOpenStudio && x.onOpenStudio()}>
+            <Icon name="phone" size={13} /> Design layout & captions
           </button>
+          <p className="pc-hint">The Premiere tab shows exactly what the sequence will look like — position the cam and gameplay, pick fonts, effects and animations, save presets.</p>
         </Opt>
 
         <Opt
@@ -184,22 +180,9 @@ export default function ExportPanel({ x }) {
             <span className="pc-label">Text size · {s.chat.fontSize}px</span>
             <input type="range" min="16" max="44" step="1" value={s.chat.fontSize} onChange={(e) => window.api.setSettings({ chat: { fontSize: Number(e.target.value) } })} />
           </div>
-          <p className="pc-hint">Twitch VODs and clips (their VOD must still exist) and YouTube streams with chat replay. Lands as Chat.mov next to the gameplay — and on its own track in the Premiere sequence.</p>
+          <p className="pc-hint">Twitch VODs and clips (their VOD must still exist) and YouTube streams with chat replay. Lands as Chat.mov next to the gameplay — and on its own track in the Premiere sequence (turn on the Chat layer in the Premiere tab to place it).</p>
         </Opt>
 
-        <Opt
-          id="crop"
-          open={open}
-          setOpen={setOpen}
-          icon="phone"
-          label="Crop gameplay"
-          summary={x.cropOn ? `${x.cropAspect} window` : 'Full frame'}
-          on={x.cropOn}
-          onToggle={(v) => x.setCropOn(v)}
-          title="Cut a window out of the gameplay (snaps to the center, Alt = free)"
-        >
-          <Seg size="sm" value={x.cropAspect} onChange={(a) => x.changeAspect(a)} options={ASPECTS.map((a) => ({ value: a, label: a }))} />
-        </Opt>
       </div>
 
       <div className="out-rows">

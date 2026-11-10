@@ -24,6 +24,10 @@ class ChatRenderer {
       const j = this.jobs.get(id);
       if (j) j.total = total;
     });
+    ipcMain.on('chatrender:band', (_e, id, band) => {
+      const j = this.jobs.get(id);
+      if (j) j.band = band;
+    });
     ipcMain.on('chatrender:done', (_e, id) => {
       const j = this.jobs.get(id);
       if (j) j.resolve();
@@ -38,14 +42,16 @@ class ChatRenderer {
    * @param o.messages [{t (output seconds, may be < 0 for pre-filled history), name, color, parts}]
    * @param o.duration output length (s); o.width/height/fontSize; o.dir temp folder; o.out .mov path
    * @param o.ffmpeg (args, {duration, onProgress}) => Promise
+   * Generic use (caption overlays): o.page = '#capsrender', o.payload = job fields for that page,
+   * o.vf = ffmpeg filter for the frames (default fps=30,format=argb).
    */
   async render(o) {
     const id = `cr${Date.now().toString(36)}${seq++}`;
     fs.mkdirSync(o.dir, { recursive: true });
     const win = new BrowserWindow({
       show: false,
-      width: Math.min(1600, o.width + 40),
-      height: Math.min(1600, o.height + 40),
+      width: Math.min(1600, (o.width || 600) + 40),
+      height: Math.min(1600, (o.height || 600) + 40),
       webPreferences: { preload: this.preload, contextIsolation: true, sandbox: true, backgroundThrottling: false, offscreen: false },
     });
     const job = { dir: o.dir, frames: [], onProgress: o.onProgress ? (p) => o.onProgress(p * 0.7) : null };
@@ -63,17 +69,14 @@ class ChatRenderer {
       ipcMain.on('chatrender:ready', onReady);
     });
     try {
-      await win.loadURL(`${this.url}#chatrender`);
+      await win.loadURL(`${this.url}${o.page || '#chatrender'}`);
       await Promise.race([ready, new Promise((_, rej) => setTimeout(() => rej(new Error('Chat renderer did not start')), 20000))]);
-      win.webContents.send('chatrender:job', {
-        id,
-        width: o.width,
-        height: o.height,
-        fontSize: o.fontSize,
-        fps: 15,
-        duration: o.duration,
-        messages: o.messages,
-      });
+      win.webContents.send(
+        'chatrender:job',
+        o.payload
+          ? { ...o.payload, id, duration: o.duration }
+          : { id, width: o.width, height: o.height, fontSize: o.fontSize, fps: 15, duration: o.duration, messages: o.messages }
+      );
       await Promise.race([done, new Promise((_, rej) => setTimeout(() => rej(new Error('Chat render timed out')), 10 * 60 * 1000))]);
     } finally {
       ipcMain.removeListener('chatrender:ready', onReady);
@@ -82,7 +85,7 @@ class ChatRenderer {
       if (!win.isDestroyed()) win.destroy();
     }
     const frames = job.frames.sort((a, b) => a.i - b.i);
-    if (!frames.length) throw new Error('Chat render produced no frames');
+    if (!frames.length) throw new Error('Render produced no frames');
     // concat list with exact durations; the last image is listed twice so its duration applies
     const lines = [];
     frames.forEach((f, k) => {
@@ -93,13 +96,13 @@ class ChatRenderer {
     lines.push(`file '${frames.at(-1).file.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`);
     const list = path.join(o.dir, 'frames.txt');
     fs.writeFileSync(list, lines.join('\n'));
-    await o.ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-vf', 'fps=30,format=argb', '-t', o.duration.toFixed(3), '-c:v', 'qtrle', '-pix_fmt', 'argb', o.out], {
+    await o.ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-vf', (typeof o.vf === 'function' ? o.vf(job.band || {}) : o.vf) || 'fps=30,format=argb', '-t', o.duration.toFixed(3), '-c:v', 'qtrle', '-pix_fmt', 'argb', o.out], {
       duration: o.duration,
       onProgress: o.onProgress ? (p) => o.onProgress(0.7 + p * 0.3) : null,
     });
     for (const f of frames) fs.rmSync(f.file, { force: true });
     fs.rmSync(list, { force: true });
-    return { file: o.out, frames: frames.length };
+    return { file: o.out, frames: frames.length, band: job.band || null };
   }
 }
 

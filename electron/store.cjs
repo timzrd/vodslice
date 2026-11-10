@@ -72,8 +72,8 @@ const DEFAULTS = {
   },
   premiere: {
     enabled: false,            // build the Premiere sequence automatically after each download
-    format: '3:4',             // fixed 1440×1920 (the facecam box stays free, Premiere crops it to the top area)
-    split: 1 / 3,              // facecam share of the height
+    format: '3:4',             // (old) the frame now comes from the Studio preset
+    split: 1 / 3,              // (old) facecam share of the height — seeds the first Studio preset
     open: 'premiere',          // after building: 'premiere' = open it in Premiere | 'folder' | 'none'
     calibration: null,         // optional {kx, ky} if Premiere maps positions differently
     captions: {
@@ -102,7 +102,15 @@ const DEFAULTS = {
     fontSize: 26,
     prefill: 15,               // seconds of chat history shown at the start
   },
-  premiereLayouts: {},         // channelKey -> {gameplayRect} for the vertical layout
+  studio: {
+    active: 'split',           // id of the layout preset used for the Premiere sequence
+    presets: [],               // layout + caption presets (electron/layout.mjs); filled with the built-ins on first start
+    favorites: [],             // favorite caption fonts
+    recentFonts: [],
+    sample: 'this is how your captions will look in the edit',
+    safeZone: 'off',           // Studio overlay: 'off' | 'tiktok' | 'shorts' | 'reels'
+  },
+  premiereLayouts: {},         // (old) channelKey -> {gameplayRect}
   facecamPresets: {},          // channelKey -> {x,y,w,h} normalized
   cropPresets: {},             // channelKey -> {x} normalized (9:16 crop position)
 };
