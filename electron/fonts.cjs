@@ -46,7 +46,7 @@ function readFace(fd, offset) {
     const id = nt.readUInt16BE(r + 6);
     const len = nt.readUInt16BE(r + 8);
     const off = nt.readUInt16BE(r + 10);
-    if (![1, 2, 4, 16, 17].includes(id)) continue;
+    if (![1, 2, 4, 6, 16, 17].includes(id)) continue;
     // prefer Windows English, then any Windows, then Mac
     const score = platform === 3 ? (lang === 0x409 ? 3 : 2) : platform === 0 ? 1.5 : platform === 1 && lang === 0 ? 1 : 0;
     if (!score || (rank[id] || 0) >= score) continue;
@@ -77,7 +77,7 @@ function readFace(fd, offset) {
     }
   }
   if (weight < 100) weight *= 100; // a few old fonts store 1..9
-  return { family: names[16] || names[1], legacy: names[1], sub: names[17] || names[2] || '', full: names[4] || '', weight: Math.min(1000, weight), italic, range };
+  return { family: names[16] || names[1], legacy: names[1], sub: names[17] || names[2] || '', full: names[4] || '', ps: names[6] || '', weight: Math.min(1000, weight), italic, range };
 }
 
 function readFont(file) {
@@ -140,4 +140,71 @@ function listFonts() {
   return cache;
 }
 
-module.exports = { listFonts, readFont };
+let faceCache = null;
+let bundledDir = null;
+/** Folder of the fonts that ship with Vodslice (dist/fonts) — used for PostScript names and installing. */
+function setBundledDir(dir) {
+  bundledDir = dir;
+  faceCache = null;
+}
+
+/** Every face (system, user, bundled) with its file — for PostScript names. */
+function allFaces() {
+  if (faceCache) return faceCache;
+  const out = [];
+  const dirs = [...DIRS.map((d, i) => [d, i ? 'user' : 'system']), ...(bundledDir ? [[bundledDir, 'bundled']] : [])];
+  for (const [dir, where] of dirs) {
+    let files = [];
+    try {
+      files = fs.readdirSync(dir).filter((f) => /\.(ttf|otf|ttc)$/i.test(f));
+    } catch {
+      continue;
+    }
+    for (const f of files) for (const face of readFont(path.join(dir, f))) out.push({ ...face, file: path.join(dir, f), where });
+  }
+  faceCache = out;
+  return out;
+}
+
+const WEIGHT_PS = { 100: 'Thin', 200: 'ExtraLight', 300: 'Light', 400: 'Regular', 500: 'Medium', 600: 'SemiBold', 700: 'Bold', 800: 'ExtraBold', 900: 'Black' };
+/** PostScript name for family + weight (After Effects wants it), e.g. Montserrat 900 -> Montserrat-Black. */
+function postscriptName(family, weight = 400, italic = false) {
+  const fam = String(family || '').toLowerCase();
+  const faces = allFaces().filter((f) => (f.family || '').toLowerCase() === fam || (f.legacy || '').toLowerCase() === fam);
+  const statics = faces.filter((f) => !f.range && !!f.italic === !!italic);
+  if (statics.length) {
+    const best = statics.reduce((b, f) => (Math.abs(f.weight - weight) < Math.abs(b.weight - weight) ? f : b), statics[0]);
+    if (best.ps) return best.ps;
+  }
+  // variable font: named instances are "Family-WeightName"
+  const base = faces[0] && faces[0].ps ? faces[0].ps.split('-')[0] : String(family).replace(/\s+/g, '');
+  const name = WEIGHT_PS[Math.round(weight / 100) * 100] || 'Regular';
+  return `${base}-${italic ? (name === 'Regular' ? 'Italic' : name + 'Italic') : name}`;
+}
+
+/** Is this family installed in Windows (so Premiere / After Effects can use it)? */
+const isInstalled = (family) => listFonts().some((f) => f.family.toLowerCase() === String(family).toLowerCase());
+
+/**
+ * Install a bundled font family for the current user (no admin): copy the files to the user font folder and
+ * register them under HKCU. Premiere / After Effects see it after a restart.
+ */
+async function installBundled(family, { targetDir = DIRS[1], regKey = 'HKCU\\Software\\Microsoft\\Windows NT\\CurrentVersion\\Fonts' } = {}) {
+  const { execFile } = require('node:child_process');
+  const faces = allFaces().filter((f) => f.where === 'bundled' && (f.family || '').toLowerCase() === String(family).toLowerCase());
+  if (!faces.length) throw new Error('Not a bundled font');
+  fs.mkdirSync(targetDir, { recursive: true });
+  const files = [...new Set(faces.map((f) => f.file))];
+  for (const src of files) {
+    const dst = path.join(targetDir, 'Vodslice-' + path.basename(src));
+    fs.copyFileSync(src, dst);
+    const face = faces.find((f) => f.file === src);
+    const label = `${face.full || face.family} (TrueType)`;
+    await new Promise((resolve, reject) => execFile('reg', ['add', regKey, '/v', label, '/t', 'REG_SZ', '/d', dst, '/f'], { windowsHide: true }, (e) => (e ? reject(e) : resolve())));
+  }
+  cache = null;
+  faceCache = null;
+  return files.length;
+}
+
+module.exports = { listFonts, readFont, setBundledDir, postscriptName, isInstalled, installBundled, allFaces };

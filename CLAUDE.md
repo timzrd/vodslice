@@ -47,9 +47,11 @@ Electron desktop app with five views (title-bar tabs):
   below (ruler, filmstrip lane with clips, activity track). Mark clips (drag / I+O / N) → check the ones to export →
   download only those parts fast → `Gameplay.mp4` + `Facecam.mp4` in auto-numbered folders (`DrDonut 70`, …) →
   optional Topaz-enhanced facecam → optional ready **Premiere sequence** (FCP7 XML) with local **captions**.
-- **Premiere** (`src/components/studio/`) — the layout designer: full-screen canvas of the vertical frame, layers
-  (gameplay / facecam / chat / captions) to drag, resize, frame and reorder, caption looks, font browser, effect stack,
-  motion, presets. The active preset builds every Premiere sequence. Live mode draws the Edit video; clip mode plays a
+- **Premiere** (`src/components/studio/`) — the layout designer: compact preset list (top left, "+" opens the
+  New-preset dialog: name, format, resolution, start layout or a pasted share code / .vspreset file), layers bottom left
+  (drag the ⋮⋮ grip to reorder — `components/Sortable.jsx`, no arrow buttons), canvas in the middle, inspector right
+  (nothing selected = the preset itself: name, format, resolution, cam edge, caption mode, share). Caption looks,
+  font browser, effect stack (grip-sortable, add tiles with live previews), motion. The active preset builds every Premiere sequence. Live mode draws the Edit video; clip mode plays a
   finished download (`vsfile://`) with its real transcript and can rebuild it ("Apply to clip").
 - **Downloads** — big job cards with the pipeline (`job.phases` / `job.phase`, one color per step, "Clip ready" once
   `job.filesReady`), earlier downloads from history. The title-bar popup stays.
@@ -101,7 +103,9 @@ electron/              main process (CommonJS, no build step)
   login.cjs            YouTube/Twitch login: one-time cookie import from the browser (or a cookies.txt)
   layout.mjs           SHARED with the renderer (ES module): frame sizes, layout presets, layer geometry
                        (resolveLayers / coverWindow), caption chunks + animation state (captionState), looks, effects
-  fonts.cjs            installed Windows fonts (system + per-user) read from the font files' name/OS2/fvar tables
+  fonts.cjs            installed Windows fonts (system + per-user) read from the font files' name/OS2/fvar tables;
+                       PostScript names for After Effects; per-user install of a bundled font (HKCU, no admin)
+  aeScript.cjs         "editable captions" ExtendScript for After Effects + finding AfterFX.exe
 src/                   renderer (React 19 + Vite 8, plain JSX)
   App.jsx              shell: tabs, top field (link/channel/name + YouTube/Twitch picker), channel state, projects,
                        morph animation, downloads button, settings
@@ -167,7 +171,8 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
   engine splits facecam export at those times (`facecamPieces` + `exportPieces`).
 
 **Premiere tab / layout presets** (`electron/layout.mjs`, `settings.studio`)
-- A preset = `ratio` + `layers` (bottom first: `{type, on, rect}` in frame fractions; gameplay/facecam also `view`
+- A preset = `ratio` + `quality` (hd/2k/4k = frame height 1920/2560/3840; caption sizes, stroke widths etc. are
+  stored "per 1920 px" and scaled by `unitOf`) + `layers` (bottom first: `{type, on, rect}` in frame fractions; gameplay/facecam also `view`
   = {zoom, cx, cy} framing; captions = {x, y, w}) + `captions` style. `normalizePreset` fills anything missing.
   Built-ins are seeded on first start from the old `premiere.split`/`premiere.captions` values.
 - Geometry is computed ONCE in `resolveLayers` and used by the canvas preview and the XML: every video layer shows a
@@ -180,6 +185,18 @@ scripts/               make-icon.cjs (procedural icon → png/ico), release.cjs,
   frames), ffmpeg pads the band back to the full frame (`pad=W:H:0:bandY:color=0x00000000`) → qtrle argb at the
   sequence rate. ~6 s for 8 s of 1-word captions. Canvas state on reused helper canvases must be reset each frame
   (a stuck `source-in` once made glow/shadow vanish).
+- Captions in Premiere, `captions.mode`: 'overlay' = the rendered look as a video track (not editable text);
+  'editable' = no overlay track, the .srt is imported with the XML ("Open in Premiere" runs a second Ctrl+I) — dragged
+  onto the sequence it becomes an editable captions track — and `<clip> captions (After Effects).jsx` builds a comp
+  with real text layers (font by PostScript name, size, fill, stroke, drop shadow, position, pop keyframes). The .jsx is
+  written in both modes; "Ae" buttons start `AfterFX.exe -r <jsx>`. FCP-XML text generators are NOT an option
+  (Premiere doesn't import them as editable text). Verified: AE 2026 runs the script (`-noui -r`) and creates the
+  comp with the right font/size/position/timing. Premiere/AE only see installed fonts → "Install <font>" for bundled ones.
+- Cam edge (facecam layer `edge`: line / shadow / glow / frame, `lib/deco.js`) is drawn in the previews and rendered
+  once (#capsrender kind 'edge') into `<clip>_camedge.mov` = its own XML track above the facecam (qtrle `-g 300`).
+- Share codes: `VSP1-` + base64url(deflate-raw(JSON of `shareable(preset)`)) (~700 chars); files = the same JSON
+  as .vspreset. `fromShared` gives an imported preset a new id.
+- Framing has magnets: the source center snaps to the box center per axis, edges show guides; zoom snaps to 100 %.
 - Fonts: bundled fonts via `src/fonts.css` (@font-face, family names = real names, they shadow installed copies);
   installed fonts by name. `document.fonts` 'loadingdone' clears the caption layout cache (fallback measurements).
 - `vsfile://media/?p=<path>` serves local video with Range support, only inside the output folder or a known
@@ -291,6 +308,9 @@ asked to remove the on-screen hints). When you add/change a key, update `KeyMap.
 ## Known gaps / ideas
 - "Open in Premiere" keystroke import was not verified end-to-end by Claude (Tim was using the PC). Import of the
   generated XMLs themselves was verified. Paths with umlauts not yet tested in Premiere.
+- v1.5.0: new-preset dialog, share code round trip, grip sorting (layers + effects, with undo), framing magnet, cam
+  edge export, 4K export, editable-captions export and the AE script were tested in the real app / real AE 2026.
+  The SRT second import into Premiere and the cam-edge track inside Premiere were not run in Premiere itself.
 - Premiere tab (v1.4.0) was tested in the real app (live + clip mode, all panels, a real Twitch download with chat +
   whisper + caption overlay); the new layer XMLs were not opened in Premiere yet — the math is the calibrated one.
 - Possible next features Tim might like: emphasis words in captions (manual colors per word), rounded/bordered

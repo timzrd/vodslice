@@ -75,14 +75,21 @@ like the canvas:
   Shift = keep ratio). Layers can overlap — e.g. the facecam over the top of the gameplay — and are reordered in the
   layer list (that order becomes the Premiere track order).
 - **Framing** – double-click gameplay or facecam to choose which part fills its box (pan + zoom, the rest of the
-  source is shown dimmed). The facecam box from Edit can be any size: it is always scaled to fill its layout box.
-- **Presets** – Split, Cam over gameplay, Full gameplay + cam, Big cam, Shorts split (9:16) to start from; duplicate,
-  rename, reset. Formats 9:16 (1080×1920), 3:4 (1440×1920), 4:5, 1:1. Safe-zone overlays for TikTok, Shorts, Reels.
-- **Captions** – looks (Punch, Clean, Neon, Boxed, Highlight, Comic, Gamer, Soft), a font browser that shows every
+  source is shown dimmed, the center snaps magnetically). The facecam box from Edit can be any size: it is always scaled to fill its layout box.
+- **Presets** – compact list top left; **+** asks for name, format (9:16, 3:4, 4:5, 1:1), resolution (HD / 2K / 4K,
+  e.g. 2160×3840) and a starting layout — or paste a code / load a `.vspreset` file someone sent you. Every preset
+  can be shared as a short code or a file. Pick the preset right in Edit's export panel.
+- **Layers** bottom left, reorder by dragging the ⋮⋮ grip (same for text effects).
+- **Cam edge** – a line, a soft shadow onto the gameplay, a glow line or a frame at the facecam; lands as its own track.
+- **Safe zones** – a mock of the TikTok / Shorts / Reels interface (buttons, name, caption) on top of the canvas.
+- **Captions in Premiere** – *Finished look* (a video track with font, effects, animation) or *Editable text*: the
+  .srt becomes an editable Premiere captions track and an After Effects script builds real text layers in the
+  preset's font and position ("Ae" button). Bundled fonts can be installed for Premiere/AE with one click.
+- **Caption style** – looks (Punch, Clean, Neon, Boxed, Highlight, Comic, Gamer, Soft), a font browser that shows every
   installed font plus 18 bundled caption fonts with a sample word (search, favorites, ↑/↓ previews live on the
   video), weight, size, case, letter spacing, spoken-word highlight (color / box / grow), words per caption.
-- **Text effects** as a stack — stroke, drop shadow, deep glow, background box, 3D extrude — drag one from the
-  library onto the video or add it in the Effects tab; each with its own settings, order and on/off.
+- **Text effects** (finished look) as a stack — stroke, drop shadow, deep glow, background box, 3D extrude — added from
+  preview tiles in the Effects tab, each with its own settings, order (drag) and on/off.
 - **Motion** – in: fade, pop, bounce, rise, slide, zoom, blur; out: fade, sink, shrink, blur; whole caption or
   word by word; speed.
 - Undo/redo (Ctrl+Z / Ctrl+Y), arrows nudge, Tab cycles layers, Space plays.

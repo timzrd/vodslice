@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { Icon, Spinner } from './ui.jsx';
-import { PremiereButton, ACTIVE, jobFiles } from './Jobs.jsx';
+import { PremiereButton, AfterEffectsButton, ACTIVE, jobFiles } from './Jobs.jsx';
 import { fmtBytes, fmtEta, fmtShort } from '../lib/time.js';
 
 // Every step of a download has its own color, so you see at a glance that the clip is already there while
@@ -117,7 +117,12 @@ function BigJob({ job, notify, onCaptions, onStudio }) {
         )}
       </div>
       <div className="bj-actions">
-        {job.status === 'done' && <PremiereButton job={job} notify={notify} />}
+        {job.status === 'done' && (
+          <div className="bj-apps">
+            <PremiereButton job={job} notify={notify} />
+            <AfterEffectsButton job={job} notify={notify} />
+          </div>
+        )}
         {ready && (
           <button className="btn sm" onClick={() => onStudio(job)} title="Preview this clip in the Premiere tab with its real files and captions">
             <Icon name="phone" size={13} /> Preview layout

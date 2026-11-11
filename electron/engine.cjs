@@ -80,7 +80,7 @@ class Engine extends EventEmitter {
           // with a Premiere layout the chat is rendered at the exact size of its box
           width: Math.round((job.spec.chatSize && job.spec.chatSize.width) || C.width || 520),
           height: Math.round((job.spec.chatSize && job.spec.chatSize.height) || C.height || 820),
-          fontSize: Math.round(C.fontSize || 26),
+          fontSize: Math.round((C.fontSize || 26) * ((job.spec.chatSize && job.spec.chatSize.scale) || 1)),
           dir: path.join(tmp, `chat${gi}`),
           out,
           signal: job.abort.signal,
@@ -704,7 +704,7 @@ class Engine extends EventEmitter {
           reuseTranscript: false,
           onStage: (label, p) => this.set(job, { stage: `${label}${suffix}`, progress: Math.min(0.995, 0.86 + 0.14 * ((i + (p || 0)) / outs.length)), eta: null }),
         });
-        o.premiere = { xml: proj.files.xml, srt: proj.files.srt, overlay: proj.files.overlay, words: proj.files.words, dir: path.dirname(proj.files.xml), device: proj.device };
+        o.premiere = { xml: proj.files.xml, srt: proj.files.srt, jsx: proj.files.jsx, overlay: proj.files.overlay, words: proj.files.words, mode: proj.captionsMode, dir: path.dirname(proj.files.xml), device: proj.device };
         this.set(job, { outputs: outs.map((x) => ({ ...x })) }, true);
       } catch (e) {
         if (job.canceled) throw e;

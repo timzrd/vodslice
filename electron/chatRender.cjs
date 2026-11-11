@@ -96,7 +96,7 @@ class ChatRenderer {
     lines.push(`file '${frames.at(-1).file.replace(/\\/g, '/').replace(/'/g, "'\\''")}'`);
     const list = path.join(o.dir, 'frames.txt');
     fs.writeFileSync(list, lines.join('\n'));
-    await o.ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-vf', (typeof o.vf === 'function' ? o.vf(job.band || {}) : o.vf) || 'fps=30,format=argb', '-t', o.duration.toFixed(3), '-c:v', 'qtrle', '-pix_fmt', 'argb', o.out], {
+    await o.ffmpeg(['-f', 'concat', '-safe', '0', '-i', list, '-vf', (typeof o.vf === 'function' ? o.vf(job.band || {}) : o.vf) || 'fps=30,format=argb', '-t', o.duration.toFixed(3), '-c:v', 'qtrle', '-pix_fmt', 'argb', '-g', String(o.gop || 60), o.out], {
       duration: o.duration,
       onProgress: o.onProgress ? (p) => o.onProgress(0.7 + p * 0.3) : null,
     });

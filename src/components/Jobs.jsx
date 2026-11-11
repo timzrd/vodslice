@@ -32,10 +32,12 @@ export function PremiereButton({ job, notify, compact }) {
           return notify && notify(`Premiere: ${r.error}`, 'err', 8000);
         }
         xml = r.project.files.xml;
-        o.premiere = { ...(o.premiere || {}), xml, words: r.project.files.words, dir: o.dir };
+        o.premiere = { ...(o.premiere || {}), xml, words: r.project.files.words, srt: r.project.files.srt, jsx: r.project.files.jsx, mode: r.project.captionsMode, dir: o.dir };
       }
       setBusy({ label: 'Opening in Premiere', p: 1 });
-      const res = await window.api.premiereOpen(xml);
+      const pr = o.premiere || {};
+      const res = await window.api.premiereOpen(xml, pr.mode === 'editable' && pr.srt ? [pr.srt] : []);
+      if (res.ok && pr.mode === 'editable' && pr.srt) notify && notify('Captions: drag the .srt from the project panel onto the sequence — it becomes an editable captions track', 'info', 8000);
       const [msg, tone] = OPEN_MSG[res.code] || ['Could not reach Premiere — path copied: Ctrl+I → Ctrl+V → Enter', 'warn'];
       notify && notify(msg, tone, tone === 'ok' ? 3500 : 7000);
       if (!res.ok) break;
@@ -48,6 +50,31 @@ export function PremiereButton({ job, notify, compact }) {
     <button className={`pr-btn ${ready ? 'ready' : ''} ${compact ? 'compact' : ''}`} onClick={go} disabled={!!busy} title={ready ? 'Import the vertical sequence into the open Premiere project' : 'Create captions + vertical sequence, then import into Premiere'}>
       {busy ? <Spinner size={12} /> : <span className="pr-logo">Pr</span>}
       {!compact && <span>{busy ? `${busy.label}${busy.p > 0 && busy.p < 1 ? ` ${Math.round(busy.p * 100)}%` : ''}` : 'Open in Premiere'}</span>}
+    </button>
+  );
+}
+
+/** Opens the editable-captions script of every output in After Effects. */
+export function AfterEffectsButton({ job, notify }) {
+  const [ae, setAe] = useState(null);
+  useEffect(() => {
+    window.api.aeStatus().then(setAe).catch(() => setAe(null));
+  }, []);
+  const scripts = (job.outputs || []).map((o) => o.premiere && o.premiere.jsx).filter(Boolean);
+  if (!ae || !scripts.length) return null;
+  return (
+    <button
+      className="ae-btn"
+      title="Captions as real text layers (preset font + position) in After Effects"
+      onClick={async () => {
+        for (const f of scripts) {
+          const r = await window.api.aeRun(f);
+          if (!r.ok) return notify && notify(r.error, 'err');
+        }
+        notify && notify(`Starting ${ae.name} — the captions comp opens in your project`, 'ok', 5000);
+      }}
+    >
+      <span className="ae-logo">Ae</span> Captions
     </button>
   );
 }

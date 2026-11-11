@@ -279,7 +279,9 @@ test('layout: presets normalize, cover windows keep the box aspect, chat renders
   const z = L.resolveLayers(split, { gameplay: { w: 1920, h: 1080 } }).find((l) => l.type === 'gameplay');
   assert.ok(Math.abs(z.src.h - 540) < 1e-6 && Math.abs(z.src.x + z.src.w - 1920) < 1e-6);
   const chat = L.normalizePreset({ ...split, layers: split.layers.map((l) => (l.type === 'chat' ? { ...l, on: true, rect: { x: 0, y: 0.5, w: 0.36, h: 0.34 } } : l)) });
-  assert.deepEqual(L.chatSizeFor(chat), { width: 518, height: 652 });
+  assert.deepEqual(L.chatSizeFor(chat), { width: 518, height: 652, scale: 1 });
+  assert.deepEqual(L.frameSize('9:16', '4k'), [2160, 3840]);
+  assert.deepEqual(L.chatSizeFor({ ...chat, quality: '4k' }), { width: 1036, height: 1306, scale: 2 });
 });
 
 test('premiere: layer sequence — z-order = track order, crop only where a layer edge is inside the frame', async () => {
@@ -335,6 +337,42 @@ test('captions: word chunks, word-by-word reveal, static frames share a key, out
   assert.equal(L.captionState(chunks, 1.19, cap).index, 0);
   assert.equal(L.captionText('insane!,', cap), 'INSANE!');
   assert.equal(L.captionText('so,', { ...cap, caps: 'none' }), 'so');
+});
+
+test('presets: share round trip, resolutions, cam edge side', async () => {
+  const L = await layoutLib();
+  const p = L.normalizePreset({ ...L.builtInPresets()[0], quality: '2k', name: 'Mine' });
+  p.layers.find((l) => l.type === 'facecam').edge = { type: 'shadow', color: '#000000', size: 12, opacity: 0.8 };
+  const shared = JSON.parse(JSON.stringify(L.shareable(p)));
+  assert.equal(shared.app, 'vodslice');
+  assert.ok(!('id' in shared.preset), 'no local id in a shared preset');
+  const back = L.fromShared(shared, 'From Tim');
+  assert.notEqual(back.id, p.id);
+  assert.equal(back.name, 'From Tim');
+  assert.equal(back.quality, '2k');
+  assert.equal(back.layers.find((l) => l.type === 'facecam').edge.type, 'shadow');
+  assert.throws(() => L.fromShared({ hello: 1 }), /not a Vodslice preset/);
+  assert.deepEqual(L.presetSize(back), [1920, 2560]);
+  assert.equal(L.edgeSide({ x: 0, y: 0, w: 1, h: 0.33 }), 'bottom');
+  assert.equal(L.edgeSide({ x: 0, y: 0.6, w: 1, h: 0.4 }), 'top');
+  assert.equal(L.edgeSide({ x: 0, y: 0, w: 1, h: 1 }), null);
+});
+
+test('after effects: captions script is plain ExtendScript with font, size, position and timing', async () => {
+  const L = await layoutLib();
+  const { build } = req('aeScript.cjs');
+  const cap = L.normalizePreset({}).captions;
+  const jsx = build({ name: 'Clip captions', width: 1440, height: 1920, fps: 59.94, duration: 12.5, caps: [{ start: 0.4, end: 1.2, text: 'GRÖSSTER MOVE' }], cap, x: 720, y: 640, u: 1, font: 'Montserrat-Black' });
+  assert.match(jsx, /app\.project\.items\.addComp\(D\.name, D\.w, D\.h, 1, D\.dur, D\.fps\)/);
+  const D = JSON.parse(/var D = (\{.*\});/.exec(jsx)[1]);
+  assert.equal(D.font, 'Montserrat-Black');
+  assert.equal(D.size, cap.size);
+  assert.deepEqual([D.x, D.y, D.w, D.h], [720, 640, 1440, 1920]);
+  assert.deepEqual(D.caps[0], [0.4, 1.2, 'GRÖSSTER MOVE']);
+  assert.ok(!/[^\x00-\x7f]/.test(jsx.split('\n').slice(2).join('\n')), 'non-ASCII is escaped for ExtendScript');
+  // ES3: no arrow functions, let/const, template literals or default params in the generated code
+  const code = jsx.split('\n').filter((l) => !l.trim().startsWith('//')).join('\n');
+  assert.ok(!/=>|\blet\s|\bconst\s|`/.test(code));
 });
 
 (async () => {

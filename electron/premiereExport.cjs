@@ -6,6 +6,8 @@ const captions = require('./captions.cjs');
 const premiere = require('./premiere.cjs');
 const { snapWords } = require('./align.cjs');
 const naming = require('./naming.cjs');
+const aeScript = require('./aeScript.cjs');
+const fonts = require('./fonts.cjs');
 
 let layoutMod = null;
 /** electron/layout.mjs is shared with the renderer (ES module). */
@@ -113,7 +115,9 @@ class PremiereExporter {
     if (!g || !g.width) throw new Error('Could not read the gameplay file');
     const fc = files.facecam ? await this.probe(files.facecam) : null;
     const chatMedia = files.chat ? await this.probe(files.chat) : null;
-    const [W, H] = L.frameSize(pr.ratio);
+    const [W, H] = L.presetSize(pr);
+    const u = H / 1920; // frame px per style px
+    const seqFps = premiere.rateOf(g.fps).fps;
 
     // ---- transcript ----
     let words = null;
@@ -139,11 +143,30 @@ class PremiereExporter {
     // ---- captions: SRT + animated overlay (drawn by the same code as the Studio preview) ----
     let srt = null;
     let overlay = null;
+    let jsx = null;
     if (wantCaptions && words && words.length) {
       const chunks = L.chunkWords(words, { words: cap.words, maxChars: cap.maxChars, maxDur: P.captions.maxDur, pause: P.captions.pause, offsetMs: P.captions.offsetMs });
       srt = path.join(outDir, `${base}.srt`);
       fs.writeFileSync(srt, '﻿' + captions.toSrt(chunks.map((c) => ({ ...c, words: c.words.map((w) => ({ ...w, w: L.captionText(w.w, cap) })) }))));
-      if (this.overlayRenderer) {
+      // editable captions for After Effects (always written — cheap and handy)
+      jsx = path.join(outDir, `${base} captions (After Effects).jsx`);
+      fs.writeFileSync(
+        jsx,
+        aeScript.build({
+          name: `${base} captions`,
+          width: W,
+          height: H,
+          fps: seqFps,
+          duration: g.duration,
+          caps: chunks.map((c) => ({ start: c.start, end: c.end, text: c.words.map((w) => L.captionText(w.w, cap)).join(' ') })),
+          cap,
+          x: capLayer.x * W,
+          y: capLayer.y * H,
+          u,
+          font: fonts.postscriptName(cap.font, cap.weight, cap.italic),
+        })
+      );
+      if (this.overlayRenderer && cap.mode !== 'editable') {
         stage('Rendering captions', 0);
         overlay = path.join(outDir, `${base}_captions.mov`);
         try {
@@ -151,7 +174,7 @@ class PremiereExporter {
         } catch {
           overlay = naming.uniquePath(overlay); // still open in Premiere
         }
-        const fps = premiere.rateOf(g.fps).fps;
+        const fps = seqFps;
         const frames = path.join(outDir, '.caption-frames');
         try {
           await this.overlayRenderer.render({
@@ -173,6 +196,40 @@ class PremiereExporter {
       }
     }
 
+    // ---- facecam edge (line / shadow / glow / frame) as its own transparent track ----
+    let edgeMov = null;
+    const fcl = L.layerOf(pr, 'facecam');
+    if (this.overlayRenderer && fc && fc.width && fcl && fcl.on && fcl.edge && fcl.edge.type !== 'none') {
+      stage('Rendering cam edge', 0);
+      edgeMov = path.join(outDir, `${base}_camedge.mov`);
+      try {
+        fs.rmSync(edgeMov, { force: true });
+      } catch {
+        edgeMov = naming.uniquePath(edgeMov);
+      }
+      const frames = path.join(outDir, '.edge-frames');
+      try {
+        await this.overlayRenderer.render({
+          page: '#capsrender',
+          payload: { kind: 'edge', width: W, height: H, edge: fcl.edge, rect: fcl.rect },
+          width: 400,
+          height: 300,
+          duration: g.duration,
+          dir: frames,
+          out: edgeMov,
+          signal: job && job.abort ? job.abort.signal : undefined,
+          vf: `fps=${seqFps.toFixed(4)},format=argb`,
+          gop: 300, // static image: almost every frame is a cheap repeat
+          ffmpeg: (args, o) => this.ffmpeg(args, { ...o, job }),
+        });
+      } catch (e) {
+        edgeMov = null;
+        if (job && job.canceled) throw e;
+      } finally {
+        fs.rmSync(frames, { recursive: true, force: true });
+      }
+    }
+
     // ---- XML: layers of the preset, bottom first ----
     stage('Writing Premiere file', 1);
     const dims = {
@@ -188,6 +245,7 @@ class PremiereExporter {
       }
       if (!l.src) continue;
       layers.push({ type: l.type, media: l.type === 'gameplay' ? g : l.type === 'facecam' ? fc : chatMedia, src: l.src, dst: l.dst });
+      if (l.type === 'facecam' && edgeMov) layers.push({ type: 'edge', track: 'Cam edge', media: { path: edgeMov, width: W, height: H }, src: { x: 0, y: 0, w: W, h: H }, dst: { x: 0, y: 0, w: W, h: H } });
     }
     const xml = premiere.buildSequence({ name: base, width: W, height: H, gameplay: g, layers, calibration: P.calibration || null });
     const xmlPath = path.join(outDir, `${base}.xml`);
@@ -196,7 +254,8 @@ class PremiereExporter {
       name: base,
       format: `${W}x${H}`,
       preset: pr,
-      files: { gameplay: files.gameplay, facecam: files.facecam, chat: files.chat, overlay, srt, xml: xmlPath, words: words ? wordsFile : null },
+      files: { gameplay: files.gameplay, facecam: files.facecam, chat: files.chat, overlay, edge: edgeMov, srt, jsx, xml: xmlPath, words: words ? wordsFile : null },
+      captionsMode: cap.mode,
       device,
       status: 'ready',
       updatedAt: Date.now(),

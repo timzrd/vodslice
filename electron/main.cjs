@@ -13,7 +13,10 @@ const topaz = require('./topaz.cjs');
 const updater = require('./updater.cjs');
 const { Whisper } = require('./whisper.cjs');
 const { PremiereExporter, layoutLib } = require('./premiereExport.cjs');
-const { listFonts } = require('./fonts.cjs');
+const fonts = require('./fonts.cjs');
+const { listFonts } = fonts;
+const aeScript = require('./aeScript.cjs');
+const { spawn } = require('node:child_process');
 const { importIntoPremiere } = require('./premiereOpen.cjs');
 const { parseInput } = require('./links.cjs');
 const youtube = require('./youtube.cjs');
@@ -427,9 +430,56 @@ function registerIpc() {
     }
   });
   ipcMain.handle('fonts:list', () => listFonts());
-  ipcMain.handle('premiere:open', async (_e, xml) => {
+  ipcMain.handle('fonts:installed', (_e, family) => fonts.isInstalled(family));
+  ipcMain.handle('fonts:install', async (_e, family) => {
+    try {
+      return { ok: true, files: await fonts.installBundled(family) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  // ---- After Effects: run the editable-captions script ----
+  ipcMain.handle('ae:status', () => aeScript.findAfterEffects());
+  ipcMain.handle('ae:run', (_e, jsx) => {
+    const ae = aeScript.findAfterEffects();
+    if (!ae) return { ok: false, error: 'After Effects not found' };
+    if (!jsx || !/\.jsx$/i.test(jsx) || !fs.existsSync(jsx)) return { ok: false, error: 'Script not found' };
+    spawn(ae.exe, ['-r', jsx], { detached: true, stdio: 'ignore', windowsHide: false }).unref();
+    return { ok: true, name: ae.name };
+  });
+  // ---- presets as files ----
+  ipcMain.handle('preset:save', async (e, text, name) => {
+    const r = await dialog.showSaveDialog(BrowserWindow.fromWebContents(e.sender), {
+      title: 'Save preset',
+      defaultPath: path.join(app.getPath('documents'), `${String(name || 'Preset').replace(/[<>:"/\\|?*]/g, '')}.vspreset`),
+      filters: [{ name: 'Vodslice preset', extensions: ['vspreset'] }],
+    });
+    if (r.canceled || !r.filePath) return null;
+    fs.writeFileSync(r.filePath, text);
+    return r.filePath;
+  });
+  ipcMain.handle('preset:open', async (e) => {
+    const r = await dialog.showOpenDialog(BrowserWindow.fromWebContents(e.sender), {
+      title: 'Load preset',
+      properties: ['openFile'],
+      filters: [{ name: 'Vodslice preset', extensions: ['vspreset', 'json', 'txt'] }],
+    });
+    if (r.canceled || !r.filePaths[0]) return null;
+    const st = fs.statSync(r.filePaths[0]);
+    if (st.size > 2 * 1024 * 1024) throw new Error('File too big');
+    return fs.readFileSync(r.filePaths[0], 'utf8');
+  });
+  ipcMain.handle('premiere:open', async (_e, xml, extras = []) => {
     clipboard.writeText(xml);
-    return importIntoPremiere(xml);
+    const r = await importIntoPremiere(xml);
+    // editable captions: the .srt goes into the project too (drag it onto the sequence = captions track)
+    if (r && r.ok)
+      for (const f of extras || []) {
+        if (!/\.srt$/i.test(f) || !fs.existsSync(f)) continue;
+        await new Promise((res) => setTimeout(res, 1800));
+        await importIntoPremiere(f).catch(() => {});
+      }
+    return r;
   });
   ipcMain.handle('premiere:words', (_e, file) => {
     try {
@@ -523,6 +573,7 @@ app.whenReady().then(async () => {
   engine.premiere = exporter;
   engine.chatRenderer = new ChatRenderer({ preload: path.join(__dirname, 'preload.cjs'), url: 'app://bundle/index.html' });
   exporter.overlayRenderer = engine.chatRenderer; // caption overlays are drawn by the same hidden-window renderer
+  fonts.setBundledDir(path.join(DIST, 'fonts'));
   // first start with the Studio: built-in layout presets (seeded from the old Premiere settings)
   layoutLib().then((L) => {
     const st = store.get().studio;

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Icon, Seg, Toggle, Spinner, Kbd, Popover } from './ui.jsx';
 import { fmt, fmtShort, fmtBytes } from '../lib/time.js';
 
-import { frameSize } from '../../electron/layout.mjs';
+import { presetSize } from '../../electron/layout.mjs';
 import { updateActivePreset } from './studio/presetStore.js';
 
 /** One export option: icon, label, summary, switch; click the row to show its details. */
@@ -125,7 +125,7 @@ export default function ExportPanel({ x }) {
           setOpen={setOpen}
           icon="film"
           label="Premiere sequence"
-          summary={x.premiereOn ? `${x.preset.name} · ${frameSize(x.preset.ratio).join('×')}${capsOn ? ' · captions' : ''}` : 'Vertical edit + captions, ready to open'}
+          summary={x.premiereOn ? `${x.preset.name} · ${presetSize(x.preset).join('×')}${capsOn ? ' · captions' : ''}` : 'Vertical edit + captions, ready to open'}
           on={x.premiereOn}
           onToggle={(v) => window.api.setSettings({ premiere: { enabled: v } })}
           title="Build captions + a vertical Premiere sequence after the download (layout from the Premiere tab)"

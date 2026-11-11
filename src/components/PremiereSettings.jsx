@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Icon, Seg, Toggle } from './ui.jsx';
 import { activePreset } from './studio/presetStore.js';
-import { frameSize } from '../../electron/layout.mjs';
+import { presetSize } from '../../electron/layout.mjs';
 
 function Row({ label, hint, children }) {
   return (
@@ -32,7 +32,7 @@ export default function PremiereSettings({ settings, onOpenStudio }) {
       <Row label="Build Premiere sequence after every download" hint="Captions + the vertical sequence are ready when the download finishes — then one click on “Open in Premiere”.">
         <Toggle checked={P.enabled} onChange={(v) => set({ enabled: v })} />
       </Row>
-      <Row label="Layout & caption style" hint={`Preset “${preset.name}” · ${preset.ratio} · ${frameSize(preset.ratio).join('×')} — design it in the Premiere tab.`}>
+      <Row label="Layout & caption style" hint={`Preset “${preset.name}” · ${preset.ratio} · ${presetSize(preset).join('×')} — design it in the Premiere tab.`}>
         <button className="btn sm" onClick={onOpenStudio}>
           <Icon name="phone" size={13} /> Open Premiere tab
         </button>

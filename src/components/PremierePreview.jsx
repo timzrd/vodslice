@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Icon } from './ui.jsx';
-import { frameSize, chunkWords, sampleWords } from '../../electron/layout.mjs';
+import { presetSize, chunkWords, sampleWords } from '../../electron/layout.mjs';
 import { drawComposition } from '../lib/compose.js';
 
 /**
@@ -24,7 +24,7 @@ export default function PremierePreview({ getVideo, facecamRect, preset, sample,
       return !r;
     });
   };
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
   const h = height;
   const w = Math.round((h * W) / H);
   const chunks = useMemo(() => chunkWords(sampleWords(sample || 'this is how your captions will look'), { words: preset.captions.words, maxChars: preset.captions.maxChars }), [sample, preset.captions.words, preset.captions.maxChars]);
@@ -42,7 +42,7 @@ export default function PremierePreview({ getVideo, facecamRect, preset, sample,
       if (!c) return;
       const { preset: p, facecamRect: fr, chunks: ch } = props.current;
       const v = getVideo && getVideo();
-      const [FW] = frameSize(p.ratio);
+      const [FW] = presetSize(p);
       const media = v && v.videoWidth ? { gameplay: { el: v }, facecam: fr ? { el: v, box: fr } : null } : {};
       const loop = ch.length ? ch.at(-1).end + 1.4 : 3;
       drawComposition(c.getContext('2d'), { preset: p, k: c.width / FW, media, chunks: ch, t: (now / 1000) % loop, noFacecam: 'Facecam' });

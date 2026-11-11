@@ -1,7 +1,8 @@
 // Draws the vertical Premiere composition (gameplay, facecam, chat, captions) of a preset onto a canvas.
 // Geometry comes from electron/layout.mjs — the same numbers the Premiere XML is built from.
-import { resolveLayers, frameSize, captionState } from '../../electron/layout.mjs';
+import { resolveLayers, presetSize, captionState } from '../../electron/layout.mjs';
 import { drawCaption } from './captionDraw.js';
+import { drawEdge } from './deco.js';
 
 const SAMPLE_CHAT = [
   ['nightbot', '#7c3aed', 'clip it!!'],
@@ -85,7 +86,8 @@ function overlayCanvas(w, h) {
  */
 export function drawComposition(ctx, o) {
   const { preset, k } = o;
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
+  const u = H / 1920; // frame px per style px
   const cw = Math.round(W * k);
   const ch = Math.round(H * k);
   ctx.save();
@@ -106,7 +108,7 @@ export function drawComposition(ctx, o) {
       if (!cap.enabled || !o.chunks) continue;
       const st = captionState(o.chunks, o.t || 0, cap);
       const [oc, ox] = overlayCanvas(cw, ch);
-      captionBox = drawCaption(ox, st, cap, { x: l.x, y: l.y, w: l.w }, { k });
+      captionBox = drawCaption(ox, st, cap, { x: l.x / u, y: l.y / u, w: l.w / u }, { k: k * u });
       ctx.drawImage(oc, 0, 0);
       l.box = captionBox;
       continue;
@@ -114,18 +116,26 @@ export function drawComposition(ctx, o) {
     const d = { x: l.dst.x * k, y: l.dst.y * k, w: l.dst.w * k, h: l.dst.h * k };
     if (l.type === 'chat') {
       const box = preset.layers.find((x) => x.type === 'chat').rect;
-      drawChatSample(ctx, { x: box.x * W * k, y: box.y * H * k, w: box.w * W * k, h: box.h * H * k }, Math.max(6, (o.chatFont || 26) * k));
+      drawChatSample(ctx, { x: box.x * W * k, y: box.y * H * k, w: box.w * W * k, h: box.h * H * k }, Math.max(6, (o.chatFont || 26) * k * u));
       continue;
     }
     const m = o.media && o.media[l.type];
     if (!l.src || !m || !m.el) {
       placeholder(ctx, d, l.type === 'facecam' ? (o.noFacecam || 'Facecam') : 'Gameplay', l.type === 'facecam' ? '#39c6ff' : '#3ddc84');
+      if (l.type === 'facecam') {
+        const fl = preset.layers.find((x) => x.type === 'facecam');
+        drawEdge(ctx, fl.edge, fl.rect, l.dst, k, u);
+      }
       continue;
     }
     try {
       ctx.drawImage(m.el, l.src.x, l.src.y, l.src.w, l.src.h, d.x, d.y, d.w, d.h);
     } catch {
       placeholder(ctx, d, l.type, '#888');
+    }
+    if (l.type === 'facecam') {
+      const fl = preset.layers.find((x) => x.type === 'facecam');
+      drawEdge(ctx, fl.edge, fl.rect, l.dst, k, u);
     }
   }
   ctx.restore();

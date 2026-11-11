@@ -1,11 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Icon, Seg, Toggle, Popover, Spinner } from '../ui.jsx';
 import { useMenu } from '../ContextMenu.jsx';
-import { frameSize, chunkWords, sampleWords, resolveLayers, coverWindow, viewFromWindow, newEffect, EFFECTS, uid, builtInPresets, normalizePreset } from '../../../electron/layout.mjs';
+import { presetSize, QUALITIES, chunkWords, sampleWords, resolveLayers, coverWindow, viewFromWindow, uid, builtInPresets, normalizePreset } from '../../../electron/layout.mjs';
 import { drawComposition } from '../../lib/compose.js';
 import { fmt } from '../../lib/time.js';
 import Inspector from './Inspector.jsx';
-import { presetsOf, savePresets, clipSources } from './presetStore.js';
+import { presetsOf, savePresets, clipSources, encodePreset, presetFileText } from './presetStore.js';
+import Sortable, { GripDots } from '../Sortable.jsx';
+import SafeZone from './SafeZone.jsx';
+import NewPresetDialog from './NewPresetDialog.jsx';
 
 export const LAYER_META = {
   gameplay: { label: 'Gameplay', icon: 'film', color: '#3ddc84' },
@@ -14,24 +17,6 @@ export const LAYER_META = {
   captions: { label: 'Captions', icon: 'type', color: '#d4ff3f' },
 };
 const HANDLES = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w'];
-// areas the platform UI covers (fractions of a 9:16 frame): right action column, bottom text, top bar
-const SAFE = {
-  tiktok: [
-    { x: 0.84, y: 0.4, w: 0.16, h: 0.46, label: 'Buttons' },
-    { x: 0, y: 0.8, w: 0.82, h: 0.2, label: 'Caption + sound' },
-    { x: 0, y: 0, w: 1, h: 0.08, label: 'Tabs' },
-  ],
-  shorts: [
-    { x: 0.85, y: 0.5, w: 0.15, h: 0.4, label: 'Buttons' },
-    { x: 0, y: 0.82, w: 0.84, h: 0.18, label: 'Title + channel' },
-    { x: 0, y: 0, w: 1, h: 0.07, label: 'Search' },
-  ],
-  reels: [
-    { x: 0.85, y: 0.5, w: 0.15, h: 0.38, label: 'Buttons' },
-    { x: 0, y: 0.8, w: 0.82, h: 0.2, label: 'Caption + audio' },
-    { x: 0, y: 0, w: 1, h: 0.07, label: 'Header' },
-  ],
-};
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const isTyping = (el) => el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT' || el.isContentEditable);
 
@@ -42,7 +27,7 @@ function PresetThumb({ preset, mediaRef, chunksRef, active }) {
     const draw = () => {
       const c = ref.current;
       if (!c) return;
-      const [W] = frameSize(preset.ratio);
+      const [W] = presetSize(preset);
       const ch = chunksRef.current || [];
       const mid = ch[1] || ch[0];
       drawComposition(c.getContext('2d'), { preset, k: c.width / W, media: mediaRef.current ? mediaRef.current() : {}, chunks: ch, t: mid ? (mid.start + mid.end) / 2 : 0, noFacecam: '' });
@@ -52,7 +37,7 @@ function PresetThumb({ preset, mediaRef, chunksRef, active }) {
     const id = setInterval(draw, 1500);
     return () => clearInterval(id);
   }, [preset, active, mediaRef, chunksRef]);
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
   const h = 84;
   const w = Math.round((h * W) / H);
   return <canvas ref={ref} width={w * 2} height={h * 2} style={{ width: w, height: h }} />;
@@ -77,7 +62,12 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
   const [building, setBuilding] = useState(null);
   const [renaming, setRenaming] = useState(null);
   const [fontPreview, setFontPreview] = useState(null);
-  const [dropHint, setDropHint] = useState(false);
+  const [newOpen, setNewOpen] = useState(false);
+  const [ae, setAe] = useState(null);
+  const lastBuild = useRef(null);
+  useEffect(() => {
+    window.api.aeStatus().then(setAe).catch(() => {});
+  }, []);
 
   const presetsRef = useRef(presets);
   presetsRef.current = presets;
@@ -102,7 +92,7 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
   }, [settings.studio]); // eslint-disable-line
 
   const preset = presets.find((p) => p.id === activeId) || presets[0];
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
 
   // ---------- edits, undo ----------
   const persist = (list) => {
@@ -269,7 +259,7 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
       const c = canvasRef.current;
       if (!c) return;
       const d = drawState.current;
-      const [FW] = frameSize(d.view.ratio);
+      const [FW] = presetSize(d.view);
       const k = c.width / FW;
       const ctx = c.getContext('2d');
       const media = mediaRef.current();
@@ -348,7 +338,7 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
     return out;
   })();
   const geo = resolveLayers(view, dims);
-  const capH = (l) => Math.max(40, cap.size * (cap.lineHeight || 1.08) * (cap.words > 2 ? 1.9 : 1.25));
+  const capH = () => Math.max(40, cap.size * (H / 1920) * (cap.lineHeight || 1.08) * (cap.words > 2 ? 1.9 : 1.25));
 
   const snapTargets = (exclude) => {
     const xs = [0, W / 2, W];
@@ -415,6 +405,24 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
         if (mode === 'move') {
           const win = { ...g0.src, x: g0.src.x - dx / s, y: g0.src.y - dy / s };
           const fixed = coverWindow(g0.box, g0.dst.w / g0.dst.h, viewFromWindow(g0.box, win, v0.zoom));
+          // magnets: the source center snaps onto the box center (per axis), the edges stop at the source edges
+          if (!free) {
+            const t = 9 / kd / s;
+            const bx = g0.box.x + g0.box.w / 2;
+            const by = g0.box.y + g0.box.h / 2;
+            if (Math.abs(fixed.x + fixed.w / 2 - bx) < t && fixed.w < g0.box.w - 0.5) {
+              fixed.x = bx - fixed.w / 2;
+              gl.push({ x: g0.dst.x + g0.dst.w / 2 });
+            }
+            if (Math.abs(fixed.y + fixed.h / 2 - by) < t && fixed.h < g0.box.h - 0.5) {
+              fixed.y = by - fixed.h / 2;
+              gl.push({ y: g0.dst.y + g0.dst.h / 2 });
+            }
+            if (fixed.x <= g0.box.x + 0.5 && fixed.w < g0.box.w - 0.5) gl.push({ x: g0.dst.x });
+            if (fixed.x + fixed.w >= g0.box.x + g0.box.w - 0.5 && fixed.w < g0.box.w - 0.5) gl.push({ x: g0.dst.x + g0.dst.w });
+            if (fixed.y <= g0.box.y + 0.5 && fixed.h < g0.box.h - 0.5) gl.push({ y: g0.dst.y });
+            if (fixed.y + fixed.h >= g0.box.y + g0.box.h - 0.5 && fixed.h < g0.box.h - 0.5) gl.push({ y: g0.dst.y + g0.dst.h });
+          }
           const v = viewFromWindow(g0.box, fixed, v0.zoom);
           patchLayer(type, (l) => (l.view = v), false);
         } else {
@@ -423,7 +431,9 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
           const r = stageRef.current.querySelector('.st-overlay').getBoundingClientRect();
           const d0 = Math.hypot(sx - r.left - cxs, sy - r.top - cys) || 1;
           const d1 = Math.hypot(ev.clientX - r.left - cxs, ev.clientY - r.top - cys);
-          patchLayer(type, (l) => (l.view = { ...v0, zoom: clamp(v0.zoom * (d1 / d0), 1, 6) }), false);
+          let z = clamp(v0.zoom * (d1 / d0), 1, 6);
+          if (!free && Math.abs(z - 1) < 0.04) z = 1;
+          patchLayer(type, (l) => (l.view = { ...v0, zoom: z }), false);
         }
       } else {
         const R = { x: l0.rect.x * W, y: l0.rect.y * H, w: l0.rect.w * W, h: l0.rect.h * H };
@@ -533,18 +543,29 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  // ---------- effects dropped from the library ----------
-  const addEffect = (type) => {
-    patch((p) => {
-      const e = newEffect(type);
-      if (type === 'stroke') p.captions.effects.unshift(e);
-      else p.captions.effects.push(e);
-      const l = p.layers.find((x) => x.type === 'captions');
-      if (l) l.on = true;
-      return p;
-    });
-    setSel('captions');
-    setTab('effects');
+  // ---------- preset actions (inspector) ----------
+  const presetActions = {
+    rename: (name) => setList(presetsRef.current.map((x) => (x.id === preset.id ? { ...x, name } : x)), false),
+    remove: () => removePreset(preset),
+    copyCode: async () => {
+      try {
+        await navigator.clipboard.writeText(await encodePreset(preset));
+        toast(`Code for “${preset.name}” copied — paste it under + on another PC`, 'ok', 3500);
+      } catch (e) {
+        toast(e.message, 'err');
+      }
+    },
+    saveFile: async () => {
+      const f = await window.api.savePresetFile(presetFileText(preset), preset.name);
+      if (f) toast('Preset saved', 'ok', 2000);
+    },
+  };
+  const createPreset = (p) => {
+    setList([...presetsRef.current, p], true);
+    activate(p.id);
+    setNewOpen(false);
+    setSel(null);
+    toast(`Preset “${p.name}” created`, 'ok', 2000);
   };
 
   // ---------- rebuild a downloaded clip ----------
@@ -559,147 +580,107 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
       return toast(`Premiere: ${r.error}`, 'err', 8000);
     }
     if (r.project.files.words && !clip.words) window.api.premiereWords(r.project.files.words).then((d) => setClipWords(d && d.words ? d.words : []));
+    lastBuild.current = r.project;
     if (open) {
       setBuilding({ label: 'Opening in Premiere', p: 1 });
-      const res = await window.api.premiereOpen(r.project.files.xml);
-      toast(res.ok ? 'Imported into Premiere' : 'Premiere not ready — XML path copied (Ctrl+I → Ctrl+V)', res.ok ? 'ok' : 'warn', 5000);
+      const editableCaps = r.project.captionsMode === 'editable' && r.project.files.srt;
+      const res = await window.api.premiereOpen(r.project.files.xml, editableCaps ? [r.project.files.srt] : []);
+      toast(res.ok ? (editableCaps ? 'Imported — drag the .srt onto the sequence for an editable captions track' : 'Imported into Premiere') : 'Premiere not ready — XML path copied (Ctrl+I → Ctrl+V)', res.ok ? 'ok' : 'warn', 6000);
     } else toast(`Premiere sequence updated · ${preset.name}`, 'ok', 2500);
     setBuilding(null);
   };
 
   const live = getLive && getLive();
   const liveTitle = live && live.info ? `${live.info.channel} · ${live.info.title}` : 'No video in Edit';
-  const safe = settings.studio.safeZone && SAFE[settings.studio.safeZone];
+  const safe = settings.studio.safeZone && settings.studio.safeZone !== 'off' ? settings.studio.safeZone : null;
   const zOrder = [...preset.layers].reverse();
 
   return (
     <div className="studio">
       {/* ---------------- left: presets, layers, effects ---------------- */}
       <aside className="st-left">
-        <div className="st-sec">
-          <div className="st-h">
-            <span>Presets</span>
-            <button className="icon-btn xs" title="New preset from the current one" onClick={() => duplicate()}>
-              <Icon name="plus" size={14} />
-            </button>
-          </div>
-          <div className="st-presets">
-            {presets.map((p) => (
-              <div
-                key={p.id}
-                className={`st-preset ${p.id === preset.id ? 'on' : ''}`}
-                onClick={() => p.id !== preset.id && activate(p.id)}
-                onContextMenu={(e) => presetMenu(e, p)}
-                onDoubleClick={() => setRenaming({ id: p.id, name: p.name })}
-                title="Double-click to rename · right-click for more"
-              >
-                <PresetThumb preset={p.id === preset.id ? view : p} mediaRef={mediaRef} chunksRef={chunksRef} active={active} />
-                <div className="sp-meta">
-                  {renaming && renaming.id === p.id ? (
-                    <input
-                      className="input sm"
-                      autoFocus
-                      value={renaming.name}
-                      onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
-                      onBlur={() => rename(p.id, renaming.name)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') rename(p.id, renaming.name);
-                        if (e.key === 'Escape') setRenaming(null);
-                      }}
-                      onFocus={(e) => e.target.select()}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <b>{p.name}</b>
-                  )}
-                  <span>
-                    {p.ratio} · {frameSize(p.ratio).join('×')}
-                  </span>
-                  {p.id === preset.id && <em>Used for Premiere</em>}
-                </div>
+        <div className="st-h">
+          <span>Presets</span>
+          <button className="icon-btn xs" title="New preset (name, format, resolution — or paste a shared code)" onClick={() => setNewOpen(true)}>
+            <Icon name="plus" size={14} />
+          </button>
+        </div>
+        <div className="st-plist">
+          {presets.map((p) => (
+            <div
+              key={p.id}
+              className={`st-prow ${p.id === preset.id ? 'on' : ''}`}
+              onClick={() => (p.id !== preset.id ? activate(p.id) : setSel(null))}
+              onContextMenu={(e) => presetMenu(e, p)}
+              onDoubleClick={() => setRenaming({ id: p.id, name: p.name })}
+              title="Double-click to rename · right-click for more"
+            >
+              <PresetThumb preset={p.id === preset.id ? view : p} mediaRef={mediaRef} chunksRef={chunksRef} active={active} />
+              <div className="sp-meta">
+                {renaming && renaming.id === p.id ? (
+                  <input
+                    className="input sm"
+                    autoFocus
+                    value={renaming.name}
+                    onChange={(e) => setRenaming({ ...renaming, name: e.target.value })}
+                    onBlur={() => rename(p.id, renaming.name)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') rename(p.id, renaming.name);
+                      if (e.key === 'Escape') setRenaming(null);
+                    }}
+                    onFocus={(e) => e.target.select()}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                ) : (
+                  <b>{p.name}</b>
+                )}
+                <span>
+                  {p.ratio} · {QUALITIES[p.quality] ? QUALITIES[p.quality].label : 'HD'}
+                </span>
               </div>
-            ))}
-          </div>
-        </div>
-
-        <div className="st-sec">
-          <div className="st-h">
-            <span>Layers</span>
-            <span className="st-hint">top first</span>
-          </div>
-          <div className="st-layers">
-            {zOrder.map((l) => {
-              const m = LAYER_META[l.type];
-              const i = preset.layers.indexOf(l);
-              return (
-                <div key={l.type} className={`st-layer ${sel === l.type ? 'on' : ''} ${l.on ? '' : 'off'}`} onClick={() => (setSel(l.type), setFraming(false))}>
-                  <button className="icon-btn xs ghost" title={l.on ? 'Hide' : 'Show'} onClick={(e) => (e.stopPropagation(), patchLayer(l.type, (x) => (x.on = !x.on)))}>
-                    <Icon name={l.on ? 'eye' : 'eyeOff'} size={14} />
-                  </button>
-                  <span className="sl-dot" style={{ background: m.color }} />
-                  <Icon name={m.icon} size={14} />
-                  <span className="sl-name">{m.label}</span>
-                  <div className="grow" />
-                  <button
-                    className="icon-btn xs ghost"
-                    title="Bring forward"
-                    disabled={i === preset.layers.length - 1}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      patch((p) => {
-                        const a = p.layers.splice(i, 1)[0];
-                        p.layers.splice(i + 1, 0, a);
-                        return p;
-                      });
-                    }}
-                  >
-                    <Icon name="arrowUp" size={13} />
-                  </button>
-                  <button
-                    className="icon-btn xs ghost"
-                    title="Send backward"
-                    disabled={i === 0}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      patch((p) => {
-                        const a = p.layers.splice(i, 1)[0];
-                        p.layers.splice(i - 1, 0, a);
-                        return p;
-                      });
-                    }}
-                  >
-                    <Icon name="arrowDown" size={13} />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <div className="st-sec">
-          <div className="st-h">
-            <span>Text effects</span>
-            <span className="st-hint">drag onto the video</span>
-          </div>
-          <div className="st-fxlib">
-            {Object.entries(EFFECTS).map(([type, e]) => (
-              <button
-                key={type}
-                className={`fx-chip fx-${type}`}
-                draggable
-                onDragStart={(ev) => {
-                  ev.dataTransfer.setData('text/vs-effect', type);
-                  ev.dataTransfer.effectAllowed = 'copy';
-                }}
-                onClick={() => addEffect(type)}
-                title={`Add ${e.label} to the captions`}
-              >
-                <span className="fx-swatch" />
-                {e.label}
+              <button className="icon-btn xs ghost sp-more" title="More" onClick={(e) => (e.stopPropagation(), presetMenu(e, p))}>
+                <Icon name="more" size={14} />
               </button>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
+
+        <div className="grow" />
+
+        <div className="st-h">
+          <span>Layers</span>
+        </div>
+        <Sortable
+          items={zOrder}
+          getKey={(l) => l.type}
+          gap={2}
+          className="st-layers"
+          onMove={(from, to) =>
+            patch((p) => {
+              const n = p.layers.length;
+              const a = p.layers.splice(n - 1 - from, 1)[0];
+              p.layers.splice(n - 1 - to, 0, a);
+              return p;
+            })
+          }
+          renderItem={(l, i, { grip }) => {
+            const m = LAYER_META[l.type];
+            return (
+              <div className={`st-layer ${sel === l.type ? 'on' : ''} ${l.on ? '' : 'off'}`} onClick={() => (setSel(l.type), setFraming(false))}>
+                <span {...grip} onClick={(e) => e.stopPropagation()}>
+                  <GripDots />
+                </span>
+                <span className="sl-dot" style={{ background: m.color }} />
+                <Icon name={m.icon} size={14} />
+                <span className="sl-name">{m.label}</span>
+                <div className="grow" />
+                <button className="icon-btn xs ghost" title={l.on ? 'Hide' : 'Show'} onClick={(e) => (e.stopPropagation(), patchLayer(l.type, (x) => (x.on = !x.on)))}>
+                  <Icon name={l.on ? 'eye' : 'eyeOff'} size={14} />
+                </button>
+              </div>
+            );
+          }}
+        />
       </aside>
 
       {/* ---------------- center: stage ---------------- */}
@@ -743,18 +724,6 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
             )}
           </Popover>
           <div className="grow" />
-          <Seg
-            size="sm"
-            value={preset.ratio}
-            onChange={(r) => patch((p) => ((p.ratio = r), p))}
-            title="Sequence format"
-            options={[
-              { value: '9:16', label: '9:16' },
-              { value: '3:4', label: '3:4' },
-              { value: '4:5', label: '4:5' },
-              { value: '1:1', label: '1:1' },
-            ]}
-          />
           <Popover
             align="right"
             trigger={({ toggle }) => (
@@ -786,36 +755,11 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
           </button>
         </div>
 
-        <div
-          className={`st-stage ${dropHint ? 'drop' : ''}`}
-          ref={stageRef}
-          onPointerDown={() => (setSel(null), setFraming(false))}
-          onDragOver={(e) => {
-            if ([...e.dataTransfer.types].includes('text/vs-effect')) {
-              e.preventDefault();
-              setDropHint(true);
-            }
-          }}
-          onDragLeave={() => setDropHint(false)}
-          onDrop={(e) => {
-            const t = e.dataTransfer.getData('text/vs-effect');
-            setDropHint(false);
-            if (t && EFFECTS[t]) {
-              e.preventDefault();
-              addEffect(t);
-              toast(`${EFFECTS[t].label} added to the captions`, 'ok', 1600);
-            }
-          }}
-        >
+        <div className="st-stage" ref={stageRef} onPointerDown={() => (setSel(null), setFraming(false))}>
           <div className="st-frame" style={{ width: cssW, height: cssH }}>
             <canvas ref={canvasRef} width={Math.round(cssW * dpr)} height={Math.round(cssH * dpr)} style={{ width: cssW, height: cssH }} />
             <div className="st-overlay" style={{ width: cssW, height: cssH }}>
-              {safe &&
-                safe.map((z, i) => (
-                  <div key={i} className="st-safe" style={{ left: z.x * cssW, top: z.y * cssH, width: z.w * cssW, height: z.h * cssH }}>
-                    <span>{z.label}</span>
-                  </div>
-                ))}
+              {safe && <SafeZone kind={safe} w={cssW} h={cssH} />}
               {preset.layers.map((l) => {
                 if (!l.on) return null;
                 const m = LAYER_META[l.type];
@@ -852,7 +796,6 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
               })}
               {guides.map((g, i) => (g.x != null ? <div key={i} className="guide v" style={{ left: g.x * kd }} /> : <div key={i} className="guide h" style={{ top: g.y * kd }} />))}
             </div>
-            {dropHint && <div className="st-drop">Drop to add to the captions</div>}
           </div>
         </div>
 
@@ -872,6 +815,22 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
               <button className="pr-btn ready" onClick={() => rebuild(true)} disabled={!!building}>
                 <span className="pr-logo">Pr</span> Apply & open
               </button>
+              {ae && (
+                <button
+                  className="ae-btn"
+                  disabled={!!building}
+                  title="Build, then open the captions as real text layers in After Effects"
+                  onClick={async () => {
+                    await rebuild(false);
+                    const jsx = lastBuild.current && lastBuild.current.files.jsx;
+                    if (!jsx) return toast('No captions yet for this clip', 'warn');
+                    const r = await window.api.aeRun(jsx);
+                    toast(r.ok ? `Starting ${r.name} — the captions comp opens in your project` : r.error, r.ok ? 'ok' : 'err', 5000);
+                  }}
+                >
+                  <span className="ae-logo">Ae</span>
+                </button>
+              )}
             </>
           ) : (
             <label className="row st-auto" title="Build the Premiere sequence (with this preset) after every download">
@@ -904,10 +863,12 @@ export default function Studio({ settings, active, getLive, jobs, history, toast
         setFraming={setFraming}
         onFontPreview={setFontPreview}
         clip={clip}
-        realWords={!!realWords}
+        presetActions={presetActions}
+        toast={toast}
         onGoEdit={onGoEdit}
         hasFacecam={!!dims.facecam}
       />
+      {newOpen && <NewPresetDialog presets={presets} current={preset} onCreate={createPreset} onClose={() => setNewOpen(false)} />}
     </div>
   );
 }

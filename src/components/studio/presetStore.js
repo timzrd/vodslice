@@ -1,5 +1,5 @@
 // Layout presets live in settings.studio (persisted in %APPDATA%\Vodslice\settings.json, kept across updates).
-import { normalizePreset, builtInPresets } from '../../../electron/layout.mjs';
+import { normalizePreset, builtInPresets, shareable } from '../../../electron/layout.mjs';
 
 export function presetsOf(settings) {
   const list = (settings.studio && settings.studio.presets) || [];
@@ -57,3 +57,34 @@ export function clipSources(jobs, history, settings) {
   (history || []).forEach((h) => add(h, false));
   return out.slice(0, 40);
 }
+
+// ---------------------------------------------------------------- share codes ("VSP1-…") and files
+const b64url = (bytes) => {
+  let s = '';
+  for (const b of bytes) s += String.fromCharCode(b);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+};
+const unb64url = (str) => {
+  const s = atob(str.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((str.length + 3) % 4));
+  return Uint8Array.from(s, (c) => c.charCodeAt(0));
+};
+
+/** Short text code for a preset (deflate + base64url) — paste it into "New preset" on another PC. */
+export async function encodePreset(p) {
+  const json = JSON.stringify(shareable(p));
+  const stream = new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+  return 'VSP1-' + b64url(new Uint8Array(await new Response(stream).arrayBuffer()));
+}
+
+/** Code, JSON file content or a bare preset object → object for fromShared(). */
+export async function decodePreset(text) {
+  const t = String(text || '').trim();
+  if (!t) throw new Error('Paste a preset code first');
+  if (t.startsWith('{')) return JSON.parse(t);
+  const m = /VSP1-([A-Za-z0-9_-]+)/.exec(t);
+  if (!m) throw new Error('That is not a Vodslice preset code');
+  const stream = new Blob([unb64url(m[1])]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+  return JSON.parse(await new Response(stream).text());
+}
+
+export const presetFileText = (p) => JSON.stringify(shareable(p), null, 1);

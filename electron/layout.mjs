@@ -3,7 +3,18 @@
 // Pure functions only — no DOM, no Node APIs.
 
 export const RATIOS = { '9:16': [1080, 1920], '3:4': [1440, 1920], '4:5': [1536, 1920], '1:1': [1920, 1920] };
-export const frameSize = (ratio) => RATIOS[ratio] || RATIOS['3:4'];
+/** Sequence resolution: frame height. Caption sizes etc. are stored "per 1920 px" and scale with it. */
+export const QUALITIES = { hd: { label: 'HD', h: 1920 }, '2k': { label: '2K', h: 2560 }, '4k': { label: '4K', h: 3840 } };
+export function frameSize(ratio, quality = 'hd') {
+  const [w, h] = RATIOS[ratio] || RATIOS['3:4'];
+  const H = (QUALITIES[quality] || QUALITIES.hd).h;
+  return [Math.round((w * H) / h / 2) * 2, H];
+}
+export const presetSize = (p) => frameSize(p.ratio, p.quality);
+/** frame px per style px (styles are defined for a 1920 px high frame) */
+export const unitOf = (p) => presetSize(p)[1] / 1920;
+export const EDGES = ['none', 'line', 'shadow', 'glow', 'frame'];
+export const DEFAULT_EDGE = { type: 'none', color: '#ffffff', size: 8, opacity: 1 };
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 let seq = 0;
@@ -26,6 +37,7 @@ export const newEffect = (type, over = {}) => ({ id: uid('e'), type, on: true, .
 
 export const DEFAULT_CAPTIONS = {
   enabled: true,
+  mode: 'overlay',         // 'overlay' = animated look as video track | 'editable' = text (SRT caption track + After Effects script)
   words: 3,
   maxChars: 18,
   font: 'Montserrat',
@@ -95,7 +107,7 @@ const L = (type, extra) => ({ id: type, type, on: true, ...extra });
 const view0 = () => ({ zoom: 1, cx: 0.5, cy: 0.5 });
 
 function basePreset(id, name, ratio, layers, capOver = {}) {
-  return { id, name, ratio, builtIn: true, layers, captions: { ...clone(DEFAULT_CAPTIONS), ...capOver } };
+  return { id, name, ratio, quality: 'hd', builtIn: true, layers, captions: { ...clone(DEFAULT_CAPTIONS), ...capOver } };
 }
 
 /** Built-in starting points. `old` = the pre-Studio premiere settings, so the first preset looks like before. */
@@ -152,6 +164,7 @@ export function normalizePreset(p) {
   const base = builtInPresets()[0];
   const out = { ...clone(base), ...clone(p || {}) };
   out.ratio = RATIOS[out.ratio] ? out.ratio : '3:4';
+  out.quality = QUALITIES[out.quality] ? out.quality : 'hd';
   const have = new Map((Array.isArray(out.layers) ? out.layers : []).filter((l) => l && LAYER_TYPES.includes(l.type)).map((l) => [l.type, l]));
   const layers = (Array.isArray(out.layers) ? out.layers : []).filter((l) => l && have.get(l.type) === l);
   for (const t of LAYER_TYPES) if (!have.has(t)) layers.splice(t === 'captions' ? layers.length : 0, 0, clone(base.layers.find((l) => l.type === t)));
@@ -160,9 +173,11 @@ export function normalizePreset(p) {
     const x = { ...clone(d), ...l, id: l.type };
     if (x.rect) x.rect = { ...d.rect, ...x.rect };
     if (l.type === 'gameplay' || l.type === 'facecam') x.view = { ...view0(), ...(l.view || {}) };
+    if (l.type === 'facecam') x.edge = { ...DEFAULT_EDGE, ...(l.edge || {}) };
     return x;
   });
   const c = { ...clone(DEFAULT_CAPTIONS), ...(out.captions || {}) };
+  if (c.mode !== 'editable') c.mode = 'overlay';
   c.active = { ...DEFAULT_CAPTIONS.active, ...(c.active || {}) };
   c.anim = { ...DEFAULT_CAPTIONS.anim, ...(c.anim || {}) };
   c.effects = (Array.isArray(c.effects) ? c.effects : []).filter((e) => e && EFFECTS[e.type]).map((e) => ({ ...EFFECTS[e.type].defaults, on: true, ...e, id: e.id || uid('e') }));
@@ -205,7 +220,7 @@ export function viewFromWindow(box, win, zoom) {
  * Returns layers bottom-first: {type, dst:{x,y,w,h}, src:{x,y,w,h}|null (media px), mw, mh} and captions {type, x, y, w}.
  */
 export function resolveLayers(preset, media = {}) {
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
   const out = [];
   for (const l of preset.layers) {
     if (!l.on) continue;
@@ -237,9 +252,31 @@ export function resolveLayers(preset, media = {}) {
 export function chatSizeFor(preset) {
   const l = layerOf(preset, 'chat');
   if (!l || !l.on) return null;
-  const [W, H] = frameSize(preset.ratio);
+  const [W, H] = presetSize(preset);
   const even = (v) => Math.max(120, Math.round(v / 2) * 2);
-  return { width: even(l.rect.w * W), height: even(l.rect.h * H) };
+  return { width: even(l.rect.w * W), height: even(l.rect.h * H), scale: H / 1920 };
+}
+
+/** Which edge of the facecam box gets the line / shadow / glow (the one inside the frame, bottom first). */
+export function edgeSide(rect) {
+  if (rect.y + rect.h < 0.995) return 'bottom';
+  if (rect.y > 0.005) return 'top';
+  return null;
+}
+
+// ---------------------------------------------------------------- sharing presets
+
+/** Preset without ids/flags that only matter locally (for share codes and files). */
+export function shareable(p) {
+  const { id, builtIn, ...rest } = normalizePreset(p); // eslint-disable-line no-unused-vars
+  return { v: 1, app: 'vodslice', preset: rest };
+}
+/** Accepts the object from shareable() (or a bare preset) and returns a new local preset. */
+export function fromShared(obj, name) {
+  const raw = obj && obj.preset ? obj.preset : obj;
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.layers)) throw new Error('This is not a Vodslice preset');
+  const p = normalizePreset(raw);
+  return { ...p, id: uid('p'), builtIn: false, name: (name || p.name || 'Imported').slice(0, 60) };
 }
 
 // ---------------------------------------------------------------- caption chunks + animation state
